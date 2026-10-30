@@ -1,6 +1,6 @@
 name: diagnose
 
-# Temporary: runs the published Windows releases on a runner and collects why they exit.
+# Temporary: builds the Windows browser and starts it like the bundle does, to fix start-up.
 on:
   push:
     branches: [claude/trusting-lamport-dvcfo5]
@@ -8,39 +8,57 @@ on:
 permissions:
   contents: read
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   windows:
     runs-on: windows-2022
     steps:
-      - name: download
-        shell: pwsh
-        run: |
-          foreach ($v in "0.1.0", "0.2.0") {
-            Invoke-WebRequest "https://github.com/itsArial/unskilled-browser/releases/download/v$v/unskilled-browser-$v-windows-x86_64.zip" -OutFile "$v.zip"
-            Expand-Archive "$v.zip" -DestinationPath "r$v"
-          }
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: unshadow MSVC's link.exe
+        shell: bash
+        run: rm -f /usr/bin/link.exe
+      - name: ninja
+        run: choco install ninja -y --no-progress
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: false
+      - name: build
+        shell: bash
+        run: cargo build --locked -p unskilled-winmain
 
-      - name: v0.1.0 (plain exe, no sandbox)
+      - name: start-up
         shell: pwsh
-        continue-on-error: true
         run: |
-          $dir = (Resolve-Path r0.1.0\unskilled-browser-0.1.0-windows-x86_64).Path
-          $env:RUST_LOG = "debug,wgpu_core=warn,wgpu_hal=warn,naga=warn"
-          $p = Start-Process "$dir\unskilled.exe" -WorkingDirectory $dir -PassThru -RedirectStandardError "$pwd\v1-stderr.txt"
-          if ($p.WaitForExit(30000)) { "EXITED with code $($p.ExitCode) (0x{0:X})" -f $p.ExitCode } else { "STILL RUNNING after 30 s" }
-          Get-Process unskilled -ErrorAction SilentlyContinue | Stop-Process -Force
-          Get-Content v1-stderr.txt -ErrorAction SilentlyContinue | Select-Object -First 60
-          Remove-Item -Recurse -Force "$env:LOCALAPPDATA\unskilled-browser" -ErrorAction SilentlyContinue
+          $env:LOCALAPPDATA = "$env:RUNNER_TEMP\appdata"
+          New-Item -ItemType Directory -Force $env:LOCALAPPDATA | Out-Null
+          $env:UNSKILLED_DEV_PIN = "throwaway passphrase"
+          $env:UNSKILLED_OPEN = "https://example.com/"
+          $env:RUST_LOG = "info,unskilled_engine=debug,wgpu_core=warn,wgpu_hal=warn"
+          $dir = (Resolve-Path target\debug).Path
+          $log = "$env:RUNNER_TEMP\startup.txt"
+          $p = Start-Process "$dir\bootstrap.exe" -ArgumentList "--module=unskilled_winmain" -WorkingDirectory $dir -PassThru -RedirectStandardError $log
+          $exited = $p.WaitForExit(60000)
+          Get-CimInstance Win32_Process -Filter "Name='bootstrap.exe'" | ForEach-Object { "pid $($_.ProcessId): " + (($_.CommandLine -split ' ') | Where-Object { $_ -like '--type=*' }) }
+          Get-Process bootstrap -ErrorAction SilentlyContinue | Stop-Process -Force
+          "--- log"; Get-Content $log
+          if ($exited) { "EXITED with code 0x{0:X}" -f $p.ExitCode }
 
-      - name: v0.2.0 under cdb
+      - name: under cdb, if it crashes
+        if: failure() || success()
         shell: pwsh
-        continue-on-error: true
         run: |
-          $cdb = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $cdb) { $cdb = Get-ChildItem -Recurse "C:\Program Files (x86)\Windows Kits" -Filter cdb.exe -ErrorAction SilentlyContinue | Select-Object -First 1 }
-          "cdb: $($cdb.FullName)"
-          $dir = (Resolve-Path r0.2.0\unskilled-browser-0.2.0-windows-x86_64).Path
-          $env:_NT_SYMBOL_PATH = "srv*$env:RUNNER_TEMP\sym*https://msdl.microsoft.com/download/symbols"
+          $cdb = "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe"
+          $env:LOCALAPPDATA = "$env:RUNNER_TEMP\appdata2"
+          New-Item -ItemType Directory -Force $env:LOCALAPPDATA | Out-Null
+          $env:UNSKILLED_DEV_PIN = "throwaway passphrase"
+          $dir = (Resolve-Path target\debug).Path
+          $env:_NT_SYMBOL_PATH = "$dir;srv*$env:RUNNER_TEMP\sym*https://msdl.microsoft.com/download/symbols"
           Push-Location $dir
-          & $cdb.FullName -lines -c "g; .lastevent; .exr -1; r; kn 60; lm o; q" "$dir\unskilled.exe" 2>&1 | Select-Object -Last 150
+          $job = Start-Job { & $using:cdb -lines -c "g; .lastevent; kn 40; q" "$using:dir\bootstrap.exe" --module=unskilled_winmain 2>&1 }
+          if (-not (Wait-Job $job -Timeout 60)) { "no crash within 60 s"; Get-Process bootstrap, cdb -ErrorAction SilentlyContinue | Stop-Process -Force }
+          Receive-Job $job | Select-String -Pattern "Access violation|exception|^\s*[0-9a-f]{2} |ExceptionAddress" | Select-Object -First 60
           Pop-Location
