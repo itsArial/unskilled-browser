@@ -31,6 +31,11 @@ jobs:
             libdrm2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2t64
       - uses: ilammy/msvc-dev-cmd@v1
         if: runner.os == 'Windows'
+      # Git Bash puts its GNU `link` (a file utility) ahead of MSVC's linker on PATH.
+      - name: unshadow MSVC's link.exe (windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: rm -f /usr/bin/link.exe
       - name: ninja (windows)
         if: runner.os == 'Windows'
         run: choco install ninja -y --no-progress

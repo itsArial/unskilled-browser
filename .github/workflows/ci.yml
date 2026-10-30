@@ -52,6 +52,10 @@ jobs:
         with:
           components: clippy
       - uses: ilammy/msvc-dev-cmd@v1
+      # Git Bash puts its GNU `link` (a file utility) ahead of MSVC's linker on PATH.
+      - name: unshadow MSVC's link.exe
+        shell: bash
+        run: rm -f /usr/bin/link.exe
       - name: ninja
         run: choco install ninja -y --no-progress
       - uses: Swatinem/rust-cache@v2
