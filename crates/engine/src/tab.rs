@@ -815,6 +815,9 @@ wrap_load_handler! {
             // (navigating earlier can lose the race against the blank page's own load).
             let pending = if is_loading == 0 { state.pending_url.take() } else { None };
             drop(state);
+            if is_loading == 0 && let Some(frame) = browser.as_ref().and_then(|b| b.main_frame()) {
+                log::debug!("engine: loaded {}", CefString::from(&frame.url()));
+            }
             if let (Some(url), Some(frame)) = (pending, browser.and_then(|b| b.main_frame())) {
                 frame.load_url(Some(&CefString::from(url.as_str())));
             }
@@ -936,6 +939,17 @@ wrap_request_handler! {
     }
 
     impl RequestHandler {
+        fn on_render_process_terminated(
+            &self,
+            _browser: Option<&mut Browser>,
+            status: TerminationStatus,
+            error_code: ::std::os::raw::c_int,
+            error_string: Option<&CefString>,
+        ) {
+            let why = error_string.map(|e| e.to_string()).unwrap_or_default();
+            log::warn!("engine: a page's renderer process ended: {status:?} (code {error_code}) {why}");
+        }
+
         fn on_before_browse(
             &self,
             _browser: Option<&mut Browser>,

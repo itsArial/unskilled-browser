@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-30
+
+### Fixed
+- Windows: the browser closed right after launch, without a window (0.1.0 and 0.2.0). The browser DLL delay-loaded system DLLs, which breaks with how the Rust Windows crates import them; it crashed the first time it touched the window. CI now starts the browser from the release layout, sandbox on, and loads a page.
+- A page's renderer process ending is now logged, as is each finished page load (debug level).
+
 ## [0.2.0] - 2026-10-30
 
 ### Added

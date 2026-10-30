@@ -2,85 +2,10 @@
 //! info in place of CEF's (Explorer, the taskbar and Task Manager read them from the .exe, not the
 //! DLL). Written to `$OUT_DIR/unskilled.exe`, where scripts/package.sh picks it up. The DLL gets
 //! the same resources.
-//!
-//! The DLL is linked like CEF links its own client binaries, with most system DLLs delay-loaded:
-//! every sandboxed sub-process loads it, and renderers must not load user32/gdi32 (win32k is off
-//! for them). Only the browser process, which runs the UI, ever calls into those.
-
-/// CEF's `CEF_DELAYLOAD_FLAGS` (cmake/cef_variables.cmake.in, CEF 156), kept in sync with
-/// Chromium's //build/config/win/BUILD.gn. Ones we don't import are ignored by the linker.
-const DELAY_LOADS: &[&str] = &[
-    "libcef.dll",
-    "api-ms-win-core-synch-l1-2-0.dll",
-    "api-ms-win-core-winrt-error-l1-1-0.dll",
-    "api-ms-win-core-winrt-l1-1-0.dll",
-    "api-ms-win-core-winrt-string-l1-1-0.dll",
-    "advapi32.dll",
-    "bcryptprimitives.dll",
-    "comctl32.dll",
-    "comdlg32.dll",
-    "credui.dll",
-    "cryptui.dll",
-    "d3d11.dll",
-    "d3d12.dll",
-    "d3d9.dll",
-    "dbghelp.dll",
-    "dcomp.dll",
-    "dwmapi.dll",
-    "dxgi.dll",
-    "dxva2.dll",
-    "esent.dll",
-    "fontsub.dll",
-    "gdi32.dll",
-    "hid.dll",
-    "imagehlp.dll",
-    "imm32.dll",
-    "mmdevapi.dll",
-    "msi.dll",
-    "netapi32.dll",
-    "ncrypt.dll",
-    "ole32.dll",
-    "oleacc.dll",
-    "oleaut32.dll",
-    "pdh.dll",
-    "propsys.dll",
-    "psapi.dll",
-    "rpcrt4.dll",
-    "rstrtmgr.dll",
-    "setupapi.dll",
-    "shell32.dll",
-    "shlwapi.dll",
-    "uiautomationcore.dll",
-    "urlmon.dll",
-    "user32.dll",
-    "usp10.dll",
-    "uxtheme.dll",
-    "wer.dll",
-    "wevtapi.dll",
-    "wininet.dll",
-    "winusb.dll",
-    "wsock32.dll",
-    "wtsapi32.dll",
-    "crypt32.dll",
-    "dhcpcsvc.dll",
-    "dwrite.dll",
-    "iphlpapi.dll",
-    "secur32.dll",
-    "userenv.dll",
-    "winhttp.dll",
-    "winmm.dll",
-    "winspool.drv",
-    "wintrust.dll",
-    "ws2_32.dll",
-];
 
 fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         println!("cargo:rerun-if-changed=build.rs");
-        for dll in DELAY_LOADS {
-            println!("cargo:rustc-cdylib-link-arg=/DELAYLOAD:{dll}");
-        }
-        println!("cargo:rustc-link-lib=delayimp");
         bootstrap::brand();
     }
 }

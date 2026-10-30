@@ -77,12 +77,6 @@ jobs:
           cargo build --locked -p unskilled-winmain 2>&1 | tee -a ci.log
           dll=target/debug/unskilled_winmain.dll
           dumpbin -nologo -exports $dll | grep -w RunWinMain
-          # Sandboxed renderers can't load user32/gdi32: the DLL may only delay-load them.
-          deps=$(dumpbin -nologo -dependents $dll | tr -d '\r')
-          echo "$deps"
-          if echo "$deps" | sed -n '/following dependencies/,/delay load dependencies/p' | grep -iwE "user32|gdi32"; then
-            echo "unskilled_winmain.dll loads user32/gdi32 at startup" | tee -a ci.log; exit 1
-          fi
           exe=$(ls -dt target/debug/build/unskilled-winmain-*/out/unskilled.exe | head -1)
           name=$(powershell -NoProfile -Command "(Get-Item '$exe').VersionInfo.FileDescription" | tr -d '\r')
           echo "unskilled.exe: $name" | tee -a ci.log
@@ -113,6 +107,42 @@ jobs:
           "$inst/uninstall.exe" /S _?=$inst
           test ! -e "$inst/versions" -a ! -e "$inst/current"
           if reg query "$key" > /dev/null 2>&1; then echo "uninstall left the registry entry"; exit 1; fi
+      # The browser has to start: the bundle layout (CEF's bootstrap as unskilled.exe, sandbox on),
+      # a throwaway vault unlocked by the debug-only PIN hook, and a page that must load while the
+      # browser and its renderers stay up.
+      - name: start-up
+        shell: bash
+        run: |
+          cef=$(ls -dt target/debug/build/cef-dll-sys-*/out/cef_windows_x86_64 | head -1)
+          mkdir -p run/locales
+          cp "$cef"/*.dll "$cef"/*.dat "$cef"/*.bin "$cef"/*.pak "$cef/vk_swiftshader_icd.json" run/
+          cp "$cef"/locales/en-US*.pak run/locales/
+          cp "$(ls -dt target/debug/build/unskilled-winmain-*/out/unskilled.exe | head -1)" run/unskilled.exe
+          cp target/debug/unskilled_winmain.dll run/unskilled.dll
+      - name: start-up (run)
+        shell: pwsh
+        run: |
+          $env:LOCALAPPDATA = "$env:RUNNER_TEMP\startup-data"
+          New-Item -ItemType Directory -Force $env:LOCALAPPDATA | Out-Null
+          $env:UNSKILLED_DEV_PIN = "throwaway passphrase"
+          $env:UNSKILLED_OPEN = "https://example.com/"
+          $env:RUST_LOG = "info,unskilled_engine=debug,wgpu_core=warn,wgpu_hal=warn"
+          $dir = (Resolve-Path run).Path
+          $log = "$env:RUNNER_TEMP\startup.log"
+          $p = Start-Process "$dir\unskilled.exe" -WorkingDirectory $dir -PassThru -RedirectStandardError $log
+          $exited = $p.WaitForExit(45000)
+          $types = @(Get-CimInstance Win32_Process -Filter "Name='unskilled.exe'" | ForEach-Object { (($_.CommandLine -split ' ') | Where-Object { $_ -like '--type=*' }) -join '' })
+          Get-Process unskilled -ErrorAction SilentlyContinue | Stop-Process -Force
+          Get-Content $log
+          "processes: browser + $($types -join ', ')"
+          $text = Get-Content -Raw $log
+          $failure =
+            if ($exited) { "the browser exited with code 0x{0:X}" -f $p.ExitCode }
+            elseif ($text -notmatch 'chromium sandbox on') { "chromium ran without the sandbox" }
+            elseif ($text -notmatch 'engine: loaded https://example.com/') { "the page never loaded" }
+            elseif ($text -match 'renderer process ended') { "a renderer process died" }
+            elseif ($types -notcontains '--type=renderer') { "no renderer process is running" }
+          if ($failure) { "::error::start-up: $failure"; exit 1 }
       # Annotations are readable without access to the logs.
       - name: surface failures
         if: failure()
