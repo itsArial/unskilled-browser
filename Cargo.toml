@@ -1,0 +1,30 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/itsArial/unskilled-browser"
+homepage = "https://github.com/itsArial/unskilled-browser"
+authors = ["itsArial"]
+
+[workspace.dependencies]
+ui = { path = "crates/ui", package = "unskilled-ui" }
+wgpu = "30"
+winit = "0.30"
+bytemuck = { version = "1", features = ["derive"] }
+pollster = "0.4"
+log = "0.4"
+env_logger = "0.11"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+# Dependencies optimized even in dev builds: argon2 (PIN unlock), adblock (filter build) and
+# wgpu are unusably slow unoptimized. Our own crates stay debuggable.
+[profile.dev.package."*"]
+opt-level = 3

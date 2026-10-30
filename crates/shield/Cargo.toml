@@ -1,0 +1,22 @@
+[package]
+name = "unskilled-shield"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+adblock = { version = "0.13", default-features = false, features = ["embedded-domain-resolver", "full-regex-handling"] }
+base64 = "0.22"
+log.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = "3"
+
+[features]
+# Only for the `ubo-resources` dev tool.
+resource-assembler = ["adblock/resource-assembler"]
+
+[[bin]]
+name = "ubo-resources"
+required-features = ["resource-assembler"]

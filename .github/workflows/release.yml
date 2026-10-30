@@ -1,0 +1,71 @@
+name: release
+
+# Push a tag like v0.1.0 to build both bundles and publish them as a GitHub release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-24.04
+          - os: windows-2022
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: system packages (linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build pkg-config libtss2-dev \
+            libwayland-dev libxkbcommon-dev libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 \
+            libdrm2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2t64
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+      - name: ninja (windows)
+        if: runner.os == 'Windows'
+        run: choco install ninja -y --no-progress
+      - name: bundle
+        shell: bash
+        run: scripts/package.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle-${{ runner.os }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sha256
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: release notes from the changelog
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '/^## /{p = index($0, "[" v "]") > 0; next} p' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "unskilled browser $GITHUB_REF_NAME" > notes.md
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "$GITHUB_REF_NAME" in v0.*|*-*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* --title "unskilled browser $GITHUB_REF_NAME" \
+            --notes-file notes.md $prerelease

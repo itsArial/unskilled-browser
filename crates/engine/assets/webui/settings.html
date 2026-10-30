@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>settings</title>
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<main>
+  <h1>settings<span class="dot">.</span></h1>
+  <p class="lede">everything here is stored on this machine, inside your encrypted vault.</p>
+  <nav>
+    <a href="#signin" class="active">sign-in</a><a href="#passwords">passwords</a><a href="#bookmarks">bookmarks</a>
+    <a href="#search">search</a><a href="#vault">vault</a><a href="#about">about</a>
+  </nav>
+
+  <section id="signin">
+    <h2>sign-in &amp; identity</h2>
+    <p>when a site wants to use your Google, Apple, Microsoft, Facebook, GitHub, Discord, X or LinkedIn sign-in,
+       you're asked first. until you agree, the provider sees you signed out — the site can't tell you have an account
+       there, and the provider doesn't learn you visited.</p>
+    <div class="row"><div class="label">ask before sharing a sign-in<small>"sign in with …" buttons on other sites</small></div>
+      <label class="switch"><input type="checkbox" data-pref="identity_gate"><span></span></label></div>
+    <div class="row"><div class="label">block third-party cookies<small>stops cross-site trackers and embedded sign-in pop-ups</small></div>
+      <label class="switch"><input type="checkbox" data-pref="block_third_party_cookies"><span></span></label></div>
+    <h2 style="margin-top:18px">decisions</h2>
+    <div id="identity"></div>
+  </section>
+
+  <section id="passwords">
+    <h2>passwords</h2>
+    <p>saved in your vault, never synced. sites never see them until you pick one from the key in the address bar.</p>
+    <div class="row"><div class="label">offer to save passwords</div>
+      <label class="switch"><input type="checkbox" data-pref="offer_passwords"><span></span></label></div>
+    <div class="row"><div class="label">ask for your pin before using a password<small>every fill, show and copy needs the pin or passphrase you unlock the browser with</small></div>
+      <label class="switch"><input type="checkbox" data-pref="confirm_password_use"><span></span></label></div>
+    <div class="row"><div class="label">import from Google Password Manager, Chrome or Firefox
+      <small>passwords.google.com → settings → export passwords, then pick the .csv here</small></div>
+      <button id="import-passwords">import .csv</button></div>
+    <input type="search" id="password-filter" placeholder="filter saved passwords" style="margin-top:12px">
+    <div id="password-list"></div>
+  </section>
+
+  <section id="bookmarks">
+    <h2>bookmarks</h2>
+    <p>press ctrl+d or the bookmark icon in the address bar to save a page.</p>
+    <div class="row"><div class="label">all bookmarks<small id="bookmark-count"></small></div>
+      <a class="button" href="unskilled://bookmarks">open</a></div>
+    <div class="row"><div class="label">import from Chrome, Firefox or Google Takeout<small>the bookmarks .html export</small></div>
+      <button id="import-bookmarks">import .html</button></div>
+  </section>
+
+  <section id="search">
+    <h2>search</h2>
+    <p>what the address bar searches when you type something that isn't an address.</p>
+    <div class="row"><div class="label">search engine</div><select id="search-engine"></select></div>
+  </section>
+
+  <section id="vault">
+    <h2>vault</h2>
+    <p id="vault-text"></p>
+  </section>
+
+  <section id="about">
+    <h2>about</h2>
+    <p id="about-text"></p>
+  </section>
+</main>
+<script src="/assets/app.js"></script>
+<script src="/assets/settings.js"></script>
+</body>
+</html>
