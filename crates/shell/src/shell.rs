@@ -69,6 +69,17 @@ struct Tab {
     presence: Spring,
     hover: Spring,
     closing: bool,
+    /// Pages left behind in other site sandboxes, for back/forward across them.
+    back: Vec<String>,
+    forward: Vec<String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Step {
+    Back,
+    Forward,
+    /// A new navigation into another sandbox.
+    New,
 }
 
 #[derive(Clone, Copy)]
@@ -317,6 +328,8 @@ impl Shell {
             presence: Spring::new(0.0, SpringConfig::SETTLE),
             hover: Spring::new(0.0, SpringConfig::SNAP),
             closing: false,
+            back: Vec::new(),
+            forward: Vec::new(),
         });
         self.tabs.last_mut().unwrap().presence.set(1.0);
         self.activate(id);
@@ -332,11 +345,72 @@ impl Shell {
         self.next_id += 1;
         let mut presence = Spring::new(0.0, SpringConfig::SETTLE);
         presence.set(1.0);
-        self.tabs.push(Tab { id, page: Some(page), devtools: None, presence, hover: Spring::new(0.0, SpringConfig::SNAP), closing: false });
+        self.tabs.push(Tab {
+            id,
+            page: Some(page),
+            devtools: None,
+            presence,
+            hover: Spring::new(0.0, SpringConfig::SNAP),
+            closing: false,
+            back: Vec::new(),
+            forward: Vec::new(),
+        });
         self.activate(id);
         if let Some(page) = self.page() {
             page.set_visible(true);
             page.focus(true);
+        }
+    }
+
+    /// Back/forward: within the page's own history first, then across site sandboxes.
+    fn go(&mut self, step: Step) {
+        let active = self.active;
+        let Some(tab) = self.tabs.iter_mut().find(|t| t.id == active) else { return };
+        let Some(page) = &tab.page else { return };
+        let (can_back, can_forward) = {
+            let s = page.state.borrow();
+            (s.can_go_back, s.can_go_forward)
+        };
+        let url = match step {
+            Step::Back if can_back => return page.back(),
+            Step::Forward if can_forward => return page.forward(),
+            Step::Back => tab.back.pop(),
+            Step::Forward => tab.forward.pop(),
+            Step::New => None,
+        };
+        if let Some(url) = url {
+            self.move_to_sandbox(active, &url, step);
+        }
+    }
+
+    /// The page in tab `id` is going to `url` in another site's sandbox: a fresh page there
+    /// replaces it (Chromium can't move a page between cookie jars).
+    fn move_to_sandbox(&mut self, id: u64, url: &str, step: Step) {
+        let content = self.layout.content;
+        let (w, h) = if content.w > 0.0 { (content.w, content.h) } else { (1200.0, 700.0) };
+        let Some(page) = engine::Tab::create(url, self.gpu.clone(), w, h, self.scale, self.notify.clone()) else { return };
+        let active = id == self.active;
+        let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id) else { return };
+        if let Some(old) = tab.page.take() {
+            let from = old.state.borrow().url.clone();
+            match step {
+                Step::New => {
+                    tab.back.push(from);
+                    tab.forward.clear();
+                }
+                Step::Back => tab.forward.push(from),
+                Step::Forward => tab.back.push(from),
+            }
+            if let Some(devtools) = tab.devtools.take() {
+                devtools.close();
+            }
+            old.close();
+        }
+        page.set_visible(active);
+        page.focus(active && !self.omnibox.focused);
+        tab.page = Some(page);
+        if active {
+            self.focus = Pane::Page;
         }
     }
 
@@ -685,15 +759,11 @@ impl Shell {
                     true
                 }
                 Key::Named(NamedKey::ArrowLeft) if alt => {
-                    if let Some(p) = self.page() {
-                        p.back();
-                    }
+                    self.go(Step::Back);
                     true
                 }
                 Key::Named(NamedKey::ArrowRight) if alt => {
-                    if let Some(p) = self.page() {
-                        p.forward();
-                    }
+                    self.go(Step::Forward);
                     true
                 }
                 Key::Named(NamedKey::Escape) if self.menu_owner.is_some() => {
@@ -1389,16 +1459,8 @@ impl Shell {
             (Some(Hit::Tab(id) | Hit::TabClose(id)), engine::Button::Middle) => self.close(id),
             (Some(Hit::TabClose(id)), engine::Button::Left) => self.close(id),
             (Some(Hit::NewTab), engine::Button::Left) => self.new_tab(None),
-            (Some(Hit::Back), engine::Button::Left) => {
-                if let Some(p) = self.page() {
-                    p.back();
-                }
-            }
-            (Some(Hit::Forward), engine::Button::Left) => {
-                if let Some(p) = self.page() {
-                    p.forward();
-                }
-            }
+            (Some(Hit::Back), engine::Button::Left) => self.go(Step::Back),
+            (Some(Hit::Forward), engine::Button::Left) => self.go(Step::Forward),
             (Some(Hit::Omnibox), engine::Button::Left) => {
                 if !self.omnibox.focused {
                     self.focus_omnibox();
@@ -1617,6 +1679,15 @@ impl Shell {
             .collect();
         for popup in popups {
             self.adopt(popup);
+        }
+        // Pages heading to another site move to that site's sandbox.
+        let swaps: Vec<(u64, String)> = self
+            .tabs
+            .iter()
+            .filter_map(|t| Some((t.id, t.page.as_ref()?.state.borrow_mut().swap.take()?)))
+            .collect();
+        for (id, url) in swaps {
+            self.move_to_sandbox(id, &url, Step::New);
         }
         // Forms of closed pages.
         let live: Vec<i32> = self.tabs.iter().filter_map(|t| t.page.as_ref()?.browser_id()).collect();
@@ -1921,6 +1992,11 @@ impl Shell {
             (s.url.clone(), s.can_go_back, s.can_go_forward, s.loading)
         });
         let (url, can_back, can_forward, loading) = state.unwrap_or_default();
+        // History before/after moves between site sandboxes counts too.
+        let (can_back, can_forward) = match self.active_tab() {
+            Some(t) => (can_back || !t.back.is_empty(), can_forward || !t.forward.is_empty()),
+            None => (can_back, can_forward),
+        };
 
         // Back / forward.
         for (rect, glyph, enabled) in [(self.layout.back, "←", can_back), (self.layout.forward, "→", can_forward)] {

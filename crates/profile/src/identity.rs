@@ -95,6 +95,25 @@ impl Provider {
     pub fn owns(&self, site: &str) -> bool {
         self.owners.contains(&site)
     }
+
+    /// The sandbox the provider's own sites share (see `sandbox_of`).
+    pub fn sandbox(&self) -> &'static str {
+        self.owners[0]
+    }
+
+    /// Whether a cookie set on `domain` is the provider's (its sign-in hosts or its own sites).
+    pub fn sets_cookies_on(&self, domain: &str) -> bool {
+        let domain = domain.trim_start_matches('.');
+        self.hosts.contains(&domain) || site_of(domain).is_some_and(|s| self.owns(&s))
+    }
+}
+
+/// The sandbox a page lives in: its site, except that a provider's own sites share one
+/// (google.com, youtube.com and gmail.com are one account). `None` for non-web URLs.
+pub fn sandbox_of(url: &str) -> Option<String> {
+    host_and_path(url)?;
+    let site = site_of(url)?;
+    Some(PROVIDERS.iter().find(|p| p.owns(&site)).map_or(site, |p| p.owners[0].to_owned()))
 }
 
 fn host_and_path(url: &str) -> Option<(String, String)> {
@@ -133,6 +152,16 @@ pub fn site_of(url: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sandboxes() {
+        assert_eq!(sandbox_of("https://www.youtube.com/watch?v=1").as_deref(), Some("google.com"));
+        assert_eq!(sandbox_of("https://mail.google.com/").as_deref(), Some("google.com"));
+        assert_eq!(sandbox_of("https://news.ycombinator.com/").as_deref(), Some("ycombinator.com"));
+        assert_eq!(sandbox_of("https://www.bbc.co.uk/news").as_deref(), Some("bbc.co.uk"));
+        assert_eq!(sandbox_of("unskilled://settings"), None);
+        assert_eq!(sandbox_of("about:blank"), None);
+    }
 
     #[test]
     fn detects_sign_in_endpoints() {

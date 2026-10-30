@@ -28,15 +28,22 @@ Pages reach the screen without a CPU copy, as DMA-BUFs on Linux and as D3D11 sha
 **Blocking**
 - A built-in blocker at the level of uBlock Origin. It runs the uBO filter lists, scriptlets and redirect resources on [adblock-rust](https://github.com/brave/adblock-rust), with cosmetic filtering and URL tracking-parameter removal.
 - YouTube works with no ads and no "ad blockers are not allowed" wall: uBO's YouTube and anti-adblock rules apply before page scripts run.
+- Cookie-consent banners and walls are removed rather than clicked through. Under GDPR, no answer means no consent.
 - The extensions panel lets you pause the blocker, add a site exception, and see a live log of every blocked tracker attempt with details.
 
 **Privacy**
+- **Every site in its own sandbox.** Each site gets its own cookie jar, storage, cache and connections, not just partitioned third-party storage.
+  - Sites can't see each other's data, even first-party cookies set while you were bounced through a tracker.
+  - A provider's own sites (google.com, youtube.com, gmail.com…) share one sandbox, so they keep working together.
+  - "Forget" erases a single site.
 - **Encrypted vault.** The profile (logins, site storage, bookmarks, passwords) is encrypted at rest with XChaCha20-Poly1305. Every launch asks for a PIN.
   - On Linux the key is sealed in the TPM 2.0, so the vault file is useless on any other machine and the TPM locks after repeated wrong PINs.
   - Without a TPM, the key comes from a passphrase via argon2id (256 MB).
 - **Nothing survives a session except what you chose.** History, cache and every other trace are dropped on close. Only logins, site storage and your own data are kept.
 - **No phoning home.** Component updates, variations, crash reports, safe-browsing pings, sync, Privacy Sandbox and FedCM are all off. WebRTC only ever uses the default route.
-- **Sign-in gate.** When a site sends you to "Sign in with Google / Apple / Microsoft / Facebook / GitHub / Discord / X / LinkedIn", the browser asks first. Until you allow it, the provider sees you signed out, so the site can't tell you have an account there.
+- **Sign-in gate.** When a site sends you to "Sign in with Google / Apple / Microsoft / Facebook / GitHub / Discord / X / LinkedIn", the browser asks first.
+  - Until you allow it, the sign-in runs in that site's own sandbox, where the provider sees you signed out, so the site can't tell you have an account there.
+  - Allowing it copies just that sign-in into the site's sandbox.
 - Third-party cookies are blocked by default.
 
 **Everyday**
@@ -114,7 +121,6 @@ scripts/package.sh        # portable bundle in dist/
 
 Planned work ([docs/PLAN.md](docs/PLAN.md) has the full design):
 - Profiles.
-- Per-site sandboxes (separate cookie jars and storage per site).
 - Browser personas (fingerprint shaping).
 - In-browser Mullvad exits per sandbox, and a kill switch.
 - Chrome Web Store extensions.

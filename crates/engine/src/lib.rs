@@ -4,12 +4,14 @@ mod devtools;
 mod inspect;
 mod net;
 mod renderer;
+mod sandbox;
 mod tab;
 mod webui;
 
 pub use net::{Action, BlockEvent, SharedNet, TabNet};
 pub use devtools::Wake;
 pub use webui::{Host, IdentityLookup, set_host, set_identity_gate};
+pub use sandbox::{forget as forget_sandbox, key_for as sandbox_for, list as sandboxes, set_enabled as set_sandboxes_enabled};
 pub use inspect::{Inspect, Request, Tls};
 pub use tab::{Button, ContextMenu, Cursor, Gpu, Key, KeyKind, MenuItem, Tab, TabState, commands, modifiers};
 
@@ -70,26 +72,17 @@ pub fn initialize(config: Config) -> Result<(), String> {
     }
     net::register_scheme();
     webui::register_scheme();
+    sandbox::init(&config.profile_dir);
     net::set_wake(config.wake);
     Ok(())
 }
 
-/// Blocks (or allows) third-party cookies for every page.
+/// Blocks (or allows) third-party cookies for every page, in every sandbox.
 pub fn set_third_party_cookies_blocked(blocked: bool) {
-    let Some(context) = request_context_get_global_context() else { return };
-    // 1 = block third-party cookies, 0 = allow.
-    for (name, value) in [("profile.cookie_controls_mode", blocked as i32), ("profile.block_third_party_cookies", blocked as i32)] {
-        let Some(mut pref) = value_create() else { continue };
-        if name.ends_with("cookies") {
-            pref.set_bool(value);
-        } else {
-            pref.set_int(value);
-        }
-        let mut error = CefString::from("");
-        if context.set_preference(Some(&CefString::from(name)), Some(&mut pref), Some(&mut error)) == 0 {
-            log::debug!("engine: preference {name}: {error}");
-        }
+    if let Some(context) = request_context_get_global_context() {
+        sandbox::apply_cookie_policy(&context, blocked);
     }
+    sandbox::set_third_party_cookies_blocked(blocked);
 }
 
 /// A fresh Preferences file on every start (the vault never keeps Chromium's, which records site

@@ -58,6 +58,12 @@ pub struct TabState {
     pub popups: Vec<Tab>,
     /// A right-click menu waiting for the shell to show it.
     pub context_menu: Option<ContextMenu>,
+    /// The site sandbox this page runs in (`None`: the shared context of internal pages).
+    pub sandbox: Option<String>,
+    /// The page tried to go to another site: the shell moves the tab to that site's sandbox.
+    pub swap: Option<String>,
+    /// Where to go once Chromium has created the browser (sandboxed pages are created async).
+    pending_url: Option<String>,
     pub closed: bool,
 }
 
@@ -83,6 +89,12 @@ pub struct ContextMenu {
     pub items: Vec<MenuItem>,
     pub link: Option<String>,
     callback: RunContextMenuCallback,
+}
+
+/// Which sandbox a page runs in, and whether it moves to another one when it changes site.
+struct Placement {
+    sandbox: Option<String>,
+    swaps: bool,
 }
 
 /// Viewport the page lays out into.
@@ -163,8 +175,16 @@ pub mod modifiers {
 
 impl Tab {
     /// Shared state + a client wired to it. The browser itself is attached by the caller.
-    fn parts(url: &str, gpu: Gpu, width: f32, height: f32, scale: f32, notify: Rc<dyn Fn()>) -> (Self, Client) {
-        let state = Rc::new(RefCell::new(TabState { url: url.to_owned(), ..Default::default() }));
+    fn parts(
+        url: &str,
+        Placement { sandbox, swaps }: Placement,
+        gpu: Gpu,
+        width: f32,
+        height: f32,
+        scale: f32,
+        notify: Rc<dyn Fn()>,
+    ) -> (Self, Client) {
+        let state = Rc::new(RefCell::new(TabState { url: url.to_owned(), sandbox, ..Default::default() }));
         let view = Rc::new(View { width: Cell::new(width), height: Cell::new(height), scale: Cell::new(scale) });
         let net: SharedNet = Arc::new(Mutex::new(net::TabNet::default()));
         let inspect = Rc::new(RefCell::new(Inspect::default()));
@@ -179,6 +199,7 @@ impl Tab {
             inspect: inspect.clone(),
             browser: browser.clone(),
             watcher: Rc::new(RefCell::new(None)),
+            swaps,
         };
         let client = PageClient::new(
             Paint::new(handlers.clone()),
@@ -205,9 +226,27 @@ impl Tab {
         notify: Rc<dyn Fn()>,
         watch: bool,
     ) -> Option<Self> {
-        let (mut tab, mut client) = Self::parts(url, gpu, width, height, scale, notify.clone());
+        // Pages open in their site's sandbox; DevTools (`watch` off) in the shared context.
+        let sandbox = if watch { crate::sandbox::key_for(url) } else { None };
+        let mut context = crate::sandbox::context(sandbox.as_deref());
+        let placement = Placement { sandbox, swaps: watch };
+        let (mut tab, mut client) = Self::parts(url, placement, gpu, width, height, scale, notify.clone());
         // Start blank and navigate once the network watcher is attached, so the inspector sees the
         // page's own document request too.
+        if context.is_some() {
+            // A sandbox's profile may still be initializing, which only the async path waits for.
+            // The browser arrives in `on_after_created`, which attaches the watcher and navigates.
+            tab.state.borrow_mut().pending_url = Some(url.to_owned());
+            let created = browser_host_create_browser(
+                Some(&window_info()),
+                Some(&mut client),
+                Some(&CefString::from("about:blank")),
+                Some(&browser_settings()),
+                None,
+                context.as_mut(),
+            );
+            return (created == 1).then_some(tab);
+        }
         let browser = browser_host_create_browser_sync(
             Some(&window_info()),
             Some(&mut client),
@@ -250,11 +289,18 @@ impl Tab {
         net.identity_prompt.as_ref().map(|p| (p.site.clone(), p.provider, p.provider_name))
     }
 
-    /// Resumes the paused sign-in, with (`share`) or without the provider's cookies.
+    /// Resumes the paused sign-in, with (`share`) or without the provider's cookies. Sharing
+    /// first copies the provider's sign-in into this page's sandbox.
     pub fn answer_identity(&self, share: bool) {
         let prompt = self.net.lock().unwrap().identity_prompt.take();
-        if let Some(prompt) = prompt {
-            prompt.answer(share);
+        let Some(prompt) = prompt else { return };
+        let sandbox = self.state.borrow().sandbox.clone();
+        let provider = profile::PROVIDERS.iter().find(|p| p.id == prompt.provider);
+        match (share, sandbox, provider) {
+            (true, Some(into), Some(provider)) => {
+                crate::sandbox::share_sign_in(provider, &into, Box::new(move || prompt.answer(true)));
+            }
+            _ => prompt.answer(share),
         }
     }
 
@@ -274,8 +320,9 @@ impl Tab {
     }
 
     pub fn navigate(&self, url: &str) {
-        if let Some(frame) = self.browser().and_then(|b| b.main_frame()) {
-            frame.load_url(Some(&CefString::from(url)));
+        match self.browser().and_then(|b| b.main_frame()) {
+            Some(frame) => frame.load_url(Some(&CefString::from(url))),
+            None => self.state.borrow_mut().pending_url = Some(url.to_owned()),
         }
     }
 
@@ -468,6 +515,9 @@ struct Handlers {
     browser: Rc<RefCell<Option<Browser>>>,
     /// Network watcher of a popup, registered once Chromium has created it.
     watcher: Rc<RefCell<Option<Registration>>>,
+    /// Cross-site navigations move the tab to another sandbox. Off for popups (they must stay
+    /// connected to their opener) and DevTools.
+    swaps: bool,
 }
 
 wrap_client! {
@@ -797,7 +847,11 @@ wrap_life_span_handler! {
             // Let Chromium create the popup — windowless, rendered by us, shown as a tab — so it
             // stays connected to its opener (sign-in pop-ups report back through it).
             let (width, height, scale) = (self.h.view.width.get(), self.h.view.height.get(), self.h.view.scale.get());
-            let (popup, popup_client) = Tab::parts(&url, self.h.gpu.clone(), width, height, scale, self.h.notify.clone());
+            // Same sandbox as the opener (Chromium keeps popups in it), and it never swaps.
+            let sandbox = self.h.state.borrow().sandbox.clone();
+            let placement = Placement { sandbox, swaps: false };
+            let (popup, popup_client) =
+                Tab::parts(&url, placement, self.h.gpu.clone(), width, height, scale, self.h.notify.clone());
             *window_info = self::window_info();
             *settings = browser_settings();
             *client = Some(popup_client);
@@ -807,13 +861,20 @@ wrap_life_span_handler! {
         }
 
         fn on_after_created(&self, browser: Option<&mut Browser>) {
-            // Browsers Chromium creates for us (popups) arrive here; ours are already in the slot.
+            // Browsers created asynchronously (popups, sandboxed pages) arrive here; the others are
+            // already in the slot.
             let Some(browser) = browser else { return };
             let mut slot = self.h.browser.borrow_mut();
             if slot.is_none() {
                 net::register_tab(browser.identifier(), self.h.net.clone());
                 *self.h.watcher.borrow_mut() = inspect::watch(browser, self.h.inspect.clone(), self.h.notify.clone());
                 *slot = Some(browser.clone());
+                drop(slot);
+                let pending = self.h.state.borrow_mut().pending_url.take();
+                if let (Some(url), Some(frame)) = (pending, browser.main_frame()) {
+                    frame.load_url(Some(&CefString::from(url.as_str())));
+                }
+                (self.h.notify)();
             }
         }
 
@@ -822,6 +883,44 @@ wrap_life_span_handler! {
             state.closed = true;
             state.frame = None;
         }
+    }
+}
+
+impl Requests {
+    /// Where this main-frame navigation should continue in another sandbox, if anywhere.
+    fn swap_target(&self, request: &Request) -> Option<String> {
+        if !self.h.swaps {
+            return None;
+        }
+        // POSTs (logins, payments) can't be replayed elsewhere; they stay where they started.
+        if !CefString::from(&request.method()).to_string().eq_ignore_ascii_case("GET") {
+            return None;
+        }
+        let url = CefString::from(&request.url()).to_string();
+        let target = crate::sandbox::key_for(&url);
+        // Internal pages exist only in the shared context; other non-web URLs (about:, data:)
+        // stay wherever they are.
+        if target.is_none() && !url.starts_with("unskilled://") {
+            return None;
+        }
+        let (current, page) = {
+            let state = self.h.state.borrow();
+            (state.sandbox.clone(), state.url.clone())
+        };
+        if current == target {
+            return None;
+        }
+        // "Sign in with …" from another site: it stays in this site's sandbox, where the provider
+        // sees you signed out, unless you let this site use that sign-in.
+        if let (Some(provider), Some(site)) = (profile::provider_for(&url), profile::site_of(&page))
+            && current.is_some()
+        {
+            let allowed = crate::webui::identity_gate().is_none_or(|lookup| lookup(&site, provider.id) == Some(true));
+            if !allowed {
+                return None;
+            }
+        }
+        Some(url)
     }
 }
 
@@ -835,11 +934,20 @@ wrap_request_handler! {
             &self,
             _browser: Option<&mut Browser>,
             frame: Option<&mut Frame>,
-            _request: Option<&mut Request>,
+            request: Option<&mut Request>,
             _user_gesture: ::std::os::raw::c_int,
             is_redirect: ::std::os::raw::c_int,
         ) -> ::std::os::raw::c_int {
-            if is_redirect == 0 && frame.is_some_and(|f| f.is_main() != 0) {
+            if !frame.is_some_and(|f| f.is_main() != 0) {
+                return 0;
+            }
+            if let Some(url) = request.and_then(|r| self.swap_target(r)) {
+                log::debug!("sandbox: {:?} → {url}", self.h.state.borrow().sandbox);
+                self.h.state.borrow_mut().swap = Some(url);
+                (self.h.notify)();
+                return 1;
+            }
+            if is_redirect == 0 {
                 self.h.inspect.borrow_mut().reset();
             }
             0

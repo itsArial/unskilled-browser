@@ -10,7 +10,7 @@
   <h1>settings<span class="dot">.</span></h1>
   <p class="lede">everything here is stored on this machine, inside your encrypted vault.</p>
   <nav>
-    <a href="#signin" class="active">sign-in</a><a href="#passwords">passwords</a><a href="#bookmarks">bookmarks</a>
+    <a href="#signin" class="active">sign-in</a><a href="#sites">sites</a><a href="#passwords">passwords</a><a href="#bookmarks">bookmarks</a>
     <a href="#search">search</a><a href="#vault">vault</a><a href="#about">about</a>
   </nav>
 
@@ -25,6 +25,17 @@
       <label class="switch"><input type="checkbox" data-pref="block_third_party_cookies"><span></span></label></div>
     <h2 style="margin-top:18px">decisions</h2>
     <div id="identity"></div>
+  </section>
+
+  <section id="sites">
+    <h2>site sandboxes</h2>
+    <p>every site lives in its own sandbox: its own cookies, storage, cache and connections. sites can't see each
+       other's data — not even a tracker you were bounced through. a provider's own sites (google.com and youtube.com,
+       …) share one, so they keep working together.</p>
+    <div class="row"><div class="label">separate every site<small>off: all sites share one cookie jar, like other browsers</small></div>
+      <label class="switch"><input type="checkbox" data-pref="isolate_sites"><span></span></label></div>
+    <input type="search" id="sandbox-filter" placeholder="filter sites" style="margin-top:12px">
+    <div id="sandbox-list"></div>
   </section>
 
   <section id="passwords">

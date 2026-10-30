@@ -302,3 +302,22 @@ images crash the GPU process in windowless mode.
   spring-smoothed progress with a creep so it never stalls; the ring fades on completion.
 - Windows: DX12 + D3D11 shared-texture import, passphrase-only vault, session under
   `%LOCALAPPDATA%` (no tmpfs), no Chromium sandbox yet (needs `bootstrap.exe`). CI-built only.
+
+## 11. Per-site sandboxes (shipped after 0.1)
+
+- `engine/src/sandbox.rs`: one `RequestContext` per `profile::sandbox_of(url)` (registrable
+  domain; a provider's owner sites grouped under its first owner), cache path
+  `profile/sandbox-<site>` — Chromium's Chrome runtime refuses profiles that aren't direct
+  children of the data dir ("Cannot create profile at path"). Contexts are created lazily; their
+  profiles initialize asynchronously, so sandboxed browsers use `browser_host_create_browser`
+  (async) and navigate from `on_after_created`.
+- A main-frame GET to another sandbox is cancelled in `on_before_browse` and `TabState::swap` asks
+  the shell for a fresh page there (`Shell::move_to_sandbox`); the shell keeps back/forward stacks
+  across swaps. POSTs, popups (need `window.opener`) and provider sign-ins the site isn't allowed
+  to use stay put. `unskilled://` pages always load in the global context.
+- Sign-in sharing (`Tab::answer_identity(true)`) copies the provider's cookies from its sandbox into
+  the site's (`sandbox::share_sign_in`); the gate still controls when they're sent.
+- Vault: `profile/sandbox-<site>/…` follows the same allowlist as `profile/Default/…`; "forget"
+  deletes cookies now and drops a `sandbox-<site>.forget` marker that `sandbox::init` acts on.
+- Next: personas per sandbox (CDP `Emulation.*` overrides + canvas/audio/WebGL farbling), per-sandbox
+  Mullvad SOCKS exits (`proxy` preference per context), privacy receipt panel, Wire panel.

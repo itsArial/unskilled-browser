@@ -529,6 +529,15 @@ wrap_resource_handler! {
     }
 }
 
+/// The shield's scheme in a sandbox's own context (the page script is fetched through it).
+pub(crate) fn register_scheme_on(context: &RequestContext) {
+    context.register_scheme_handler_factory(
+        Some(&CefString::from(SHIELD_SCHEME)),
+        Some(&CefString::from("")),
+        Some(&mut ShieldScheme::new()),
+    );
+}
+
 pub fn register_scheme() {
     register_scheme_handler_factory(
         Some(&CefString::from(SHIELD_SCHEME)),

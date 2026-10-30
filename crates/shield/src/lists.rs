@@ -14,6 +14,8 @@ pub enum Category {
     Trackers,
     Malware,
     AntiAdblock,
+    /// Cookie-consent banners and walls.
+    Cookies,
     /// uBO's own lists mix ads, trackers and fixes.
     Mixed,
 }
@@ -25,6 +27,7 @@ impl Category {
             Self::Trackers => "tracker",
             Self::Malware => "malware",
             Self::AntiAdblock => "anti-adblock",
+            Self::Cookies => "cookie banner",
             Self::Mixed => "ad / tracker",
         }
     }
@@ -173,6 +176,32 @@ pub const LISTS: &[List] = &[
         max_age: DAILY,
         hosts: false,
         urls: &["https://easylist-downloads.adblockplus.org/antiadblockfilters.txt"],
+    },
+    // Consent banners: removed (and their scroll locks undone) instead of clicked through. Under
+    // GDPR, no answer is no consent.
+    List {
+        id: "ublock-cookies",
+        title: "uBlock filters – Cookie Notices",
+        category: Category::Cookies,
+        trusted: true,
+        max_age: DAILY,
+        hosts: false,
+        urls: &[
+            "https://ublockorigin.github.io/uAssetsCDN/filters/annoyances-cookies.txt",
+            "https://ublockorigin.pages.dev/filters/annoyances-cookies.txt",
+        ],
+    },
+    List {
+        id: "easylist-cookies",
+        title: "EasyList Cookie",
+        category: Category::Cookies,
+        trusted: false,
+        max_age: DAILY,
+        hosts: false,
+        urls: &[
+            "https://ublockorigin.github.io/uAssetsCDN/thirdparties/easylist-cookies.txt",
+            "https://ublockorigin.pages.dev/thirdparties/easylist-cookies.txt",
+        ],
     },
 ];
 

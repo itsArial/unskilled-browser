@@ -280,6 +280,7 @@ fn tag(e: &BlockEvent) -> (&'static str, Color) {
         Category::Trackers => ("trk", theme::TEXT),
         Category::Malware => ("mal", theme::ACCENT),
         Category::AntiAdblock => ("abp", theme::ACCENT),
+        Category::Cookies => ("cky", theme::TEXT),
         Category::Mixed => ("ads", theme::TEXT),
     }
 }

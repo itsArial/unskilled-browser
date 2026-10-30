@@ -35,6 +35,7 @@ function render() {
   }
 
   renderPasswords();
+  renderSandboxes();
   $("#bookmark-count").textContent = state.bookmarks.length + " saved";
 
   const select = $("#search-engine");
@@ -49,6 +50,24 @@ function render() {
 
   $("#about-text").replaceChildren("unskilled browser " + state.version + " · chromium " + state.chromium + " · GPL-3.0 · ",
     el("a", { href: "#", onclick: (e) => { e.preventDefault(); api("openUrl", { url: state.source }); } }, "source code"));
+}
+
+function renderSandboxes() {
+  const list = $("#sandbox-list");
+  const filter = $("#sandbox-filter").value.toLowerCase();
+  const rows = state.sandboxes.filter((s) => !filter || s.includes(filter));
+  list.replaceChildren();
+  if (!rows.length) list.append(el("div", { class: "empty" }, state.sandboxes.length ? "no matches" : "no site data yet"));
+  for (const site of rows) {
+    list.append(el("div", { class: "row" },
+      el("div", { class: "label truncate" }, site),
+      el("div", { class: "actions" }, el("button", { class: "danger", onclick: async () => {
+        await api("forgetSandbox", { site });
+        toast(site + " forgotten — signed out now, fully erased on restart");
+        state.sandboxes = state.sandboxes.filter((s) => s !== site);
+        renderSandboxes();
+      } }, "forget"))));
+  }
 }
 
 function renderPasswords() {
@@ -93,6 +112,7 @@ $("#search-engine").addEventListener("change", async (e) => {
   toast("search engine changed");
 });
 $("#password-filter").addEventListener("input", renderPasswords);
+$("#sandbox-filter").addEventListener("input", renderSandboxes);
 $("#import-passwords").addEventListener("click", async () => {
   const text = await readFile(".csv,text/csv");
   if (text == null) return;

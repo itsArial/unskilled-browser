@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- Per-site sandboxes. Every site runs in its own Chromium profile (cookies, storage, cache, connections), with a provider's own sites grouped together.
+  - Tabs move between sandboxes when they change site, and back/forward works across those moves.
+  - Settings → sites lists every sandbox with a "forget" button.
+- Sign-in sharing copies the provider's sign-in into the site's sandbox when you allow it.
+- Cookie-consent banners are removed (uBlock filters – Cookie Notices, EasyList Cookie).
+
+### Fixed
+- Windows: the vault kept nothing across restarts, because archive paths used `\`.
+
 ## [0.1.0] - 2026-10-30
 
 First public release.

@@ -5,7 +5,7 @@
 mod identity;
 mod import;
 
-pub use identity::{Decision, Provider, PROVIDERS, provider_for, site_of};
+pub use identity::{Decision, Provider, PROVIDERS, provider_for, sandbox_of, site_of};
 pub use import::{import_bookmarks_html, import_passwords_csv};
 
 use serde::{Deserialize, Serialize};
@@ -85,6 +85,8 @@ pub struct Prefs {
     pub offer_passwords: bool,
     /// Ask for the vault PIN/passphrase every time a saved password is filled, shown or copied.
     pub confirm_password_use: bool,
+    /// Every site gets its own sandbox (cookie jar, storage, cache, connections).
+    pub isolate_sites: bool,
 }
 
 impl Default for Prefs {
@@ -95,6 +97,7 @@ impl Default for Prefs {
             block_third_party_cookies: true,
             offer_passwords: true,
             confirm_password_use: true,
+            isolate_sites: true,
         }
     }
 }

@@ -42,6 +42,15 @@ pub fn keep(rel: &str) -> bool {
     if SKIP_NAMES.contains(&name) {
         return false;
     }
+    // Per-site sandboxes (`profile/sandbox-<site>/…`) keep what the default profile keeps, plus
+    // the marker of a sandbox to erase on the next start.
+    let rel = match rel.strip_prefix("profile/sandbox-") {
+        Some(rest) => match rest.split_once('/') {
+            Some((_, inner)) => format!("profile/Default/{inner}"),
+            None => return rest.ends_with(".forget"),
+        },
+        None => rel.to_owned(),
+    };
     KEEP.iter().any(|k| if k.ends_with('/') { rel.starts_with(k) } else { rel == *k })
 }
 
@@ -134,6 +143,11 @@ mod tests {
         assert!(!keep("profile/Local State"));
         assert!(!keep("profile/Default/Local Storage/leveldb/LOG"));
         assert!(!keep("profile/Default/TransportSecurity"));
+        assert!(keep("profile/sandbox-github.com/Cookies"));
+        assert!(keep("profile/sandbox-github.com/Local Storage/leveldb/000003.log"));
+        assert!(keep("profile/sandbox-github.com.forget"));
+        assert!(!keep("profile/sandbox-github.com/History"));
+        assert!(!keep("profile/sandbox-github.com/Preferences"));
     }
 
     #[test]

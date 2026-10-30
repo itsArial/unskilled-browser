@@ -90,6 +90,7 @@ impl Host {
     pub fn apply_prefs(&self) {
         let prefs = self.prefs();
         engine::set_third_party_cookies_blocked(prefs.block_third_party_cookies);
+        engine::set_sandboxes_enabled(prefs.isolate_sites);
         self.sync_identity();
         if prefs.identity_gate {
             let decisions = self.identity.clone();
@@ -205,6 +206,7 @@ impl Host {
                 "providerName": profile::PROVIDERS.iter().find(|p| p.id == provider).map_or(provider.as_str(), |p| p.name),
                 "decision": decision,
             })).collect::<Vec<_>>(),
+            "sandboxes": engine::sandboxes(),
             "engines": SearchEngine::ALL.iter().map(|e| json!({"id": e, "label": e.label()})).collect::<Vec<_>>(),
             "vault": if protection == vault::Protection::Tpm { "tpm" } else { "passphrase" },
             "tpmAvailable": self.vault.can_upgrade(),
@@ -253,6 +255,12 @@ impl engine::Host for Host {
             "importBookmarks" => {
                 let items = profile::import_bookmarks_html(params["text"].as_str().unwrap_or_default());
                 json!({"added": self.profile.borrow_mut().import_bookmarks(items)})
+            }
+            "forgetSandbox" => {
+                if let Some(site) = params["site"].as_str() {
+                    engine::forget_sandbox(site);
+                }
+                json!({"ok": true})
             }
             "removeBookmark" => {
                 if let Some(id) = params["id"].as_u64() {
