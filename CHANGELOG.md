@@ -5,18 +5,6 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-### Added
-- Per-site sandboxes. Every site runs in its own Chromium profile (cookies, storage, cache, connections), with a provider's own sites grouped together.
-  - Tabs move between sandboxes when they change site, and back/forward works across those moves.
-  - Settings → sites lists every sandbox with a "forget" button.
-- Sign-in sharing copies the provider's sign-in into the site's sandbox when you allow it.
-- Cookie-consent banners are removed (uBlock filters – Cookie Notices, EasyList Cookie).
-- Windows: Chromium's sandbox. The bundle's `unskilled.exe` is now CEF's `bootstrap.exe` (with our icon and name), which sandboxes the renderer, GPU and utility processes and runs the browser from `unskilled.dll`.
-
-### Fixed
-- Windows: the vault kept nothing across restarts, because archive paths used `\`.
-- Windows: logging off or shutting down with the browser open saves the vault, as on Linux. Before, only closing the window did. Ctrl+C and closing the console of a debug build save it too.
-
 ## [0.1.0] - 2026-10-30
 
 First public release.
@@ -32,11 +20,18 @@ First public release.
 - A built-in blocker:
   - uBlock Origin lists, scriptlets and redirect resources;
   - YouTube anti-enforcement;
+  - cookie-consent banners removed (uBlock filters – Cookie Notices, EasyList Cookie);
   - an extensions panel with pause, site exceptions and a tracker log.
 - An encrypted vault with a PIN on every launch:
   - TPM-sealed on Linux, passphrase fallback;
-  - history and cache wiped on close.
+  - history and cache wiped on close;
+  - saved cleanly on logout and shutdown (SIGTERM on Linux, the end of the session on Windows).
+- Per-site sandboxes. Every site runs in its own Chromium profile (cookies, storage, cache, connections), with a provider's own sites grouped together.
+  - Tabs move between sandboxes when they change site, and back/forward works across those moves.
+  - Settings → sites lists every sandbox with a "forget" button.
+- Chromium's process sandbox on both platforms. On Windows the bundle's `unskilled.exe` is CEF's `bootstrap.exe` (with our icon and name), running the browser from `unskilled.dll`.
 - A sign-in gate for Google, Apple, Microsoft, Facebook, GitHub, Discord, X and LinkedIn.
+  - Allowing a sign-in copies just that sign-in into the site's sandbox.
 - A password manager:
   - PIN before every use (optional);
   - import from Google Password Manager, Chrome and Firefox.
