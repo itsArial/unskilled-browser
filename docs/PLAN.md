@@ -321,3 +321,30 @@ images crash the GPU process in windowless mode.
   deletes cookies now and drops a `sandbox-<site>.forget` marker that `sandbox::init` acts on.
 - Next: personas per sandbox (CDP `Emulation.*` overrides + canvas/audio/WebGL farbling), per-sandbox
   Mullvad SOCKS exits (`proxy` preference per context), privacy receipt panel, Wire panel.
+
+## 12. Branch `from-scratch` (in progress)
+
+Goal: replace third-party building blocks with our own where it's realistic, plus an extensions
+manager. Crypto (argon2, ChaCha20-Poly1305, SHA-2), Chromium, wgpu and winit stay.
+
+1. ✅ **Extensions** — `crates/extensions` (own DEFLATE decoder, ZIP reader, CRX3 + protobuf header
+   parser, manifest/locale handling) and `unskilled://extensions` (add .crx/.zip, enable/disable,
+   remove; changes apply on restart). Spike result: `--load-extension` works with our Alloy-style
+   windowless pages under the Chrome bootstrap — content scripts and MV3 service workers run, in
+   every sandbox profile (each sandbox gets its own extension instance and storage). Extensions
+   are kept in the vault's `settings/extensions/<id>`; the CRX public key is written into the
+   manifest's `key` so the unpacked ID equals the Web Store ID. Web Store links are fetched with
+   `engine::fetch` (CEF URLRequest, same network route as pages). Verified: uBlock Origin Lite
+   (file) and Dark Reader (store link) install, survive restarts and run. Sandboxed pages are
+   created async on about:blank and navigate when that load settles (`on_loading_state_change`)
+   — navigating from `on_after_created` raced the blank load. Later: toolbar actions/popups
+   (windowless page at `chrome-extension://<id>/<popup>` in our own card).
+2. **Blocker engine** — own uBO-syntax engine replacing adblock-rust: token-indexed network
+   filters with all options, cosmetic + procedural filters, redirects, removeparam, header rules.
+3. **Font rasterizer** — own TrueType parser + coverage rasterizer replacing swash.
+4. ✅ **WebSocket** — `engine/src/websocket.rs`: own handshake (with its SHA-1), framing,
+   fragmentation, ping/pong, close; tungstenite removed. DevTools now waits for an async-created
+   page's browser before opening (`Shell::devtools_pending`).
+5. **TPM 2.0** — own command encoding over `/dev/tpmrm0` replacing tss-esapi/libtss2; verified
+   against the current implementation before switching.
+6. Then: Wire panel, personas, privacy receipt, reader mode.

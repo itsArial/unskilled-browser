@@ -5,6 +5,7 @@
 use crate::clipboard;
 use profile::{Decision, Prefs, Profile, SearchEngine};
 use serde_json::{Value, json};
+use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
@@ -21,6 +22,15 @@ pub enum Event {
     Authorize(u64),
     LoginSubmitted { browser: i32, url: String, username: String, password: Zeroizing<String> },
     LoginForm { browser: i32, url: String, frame: String },
+    /// An internal page asked to restart the browser (extension changes).
+    Restart,
+}
+
+/// A Web Store download started from the extensions page.
+enum StoreJob {
+    Pending,
+    Done(String),
+    Failed(String),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -52,10 +62,14 @@ pub struct Host {
     /// `"<site> <provider>"` → share, mirrored for CEF's IO thread.
     identity: Arc<RwLock<HashMap<String, bool>>>,
     wake: Rc<dyn Fn()>,
+    extensions: Rc<RefCell<extensions::Manager>>,
+    store_jobs: Rc<RefCell<HashMap<u64, StoreJob>>>,
+    /// Extensions changed since Chromium started: they apply on restart.
+    restart_needed: Rc<Cell<bool>>,
 }
 
 impl Host {
-    pub fn new(profile: Profile, vault: Arc<vault::Vault>, wake: Rc<dyn Fn()>) -> Rc<Self> {
+    pub fn new(profile: Profile, vault: Arc<vault::Vault>, wake: Rc<dyn Fn()>, extensions: extensions::Manager) -> Rc<Self> {
         let host = Rc::new(Self {
             profile: RefCell::new(profile),
             vault,
@@ -64,6 +78,9 @@ impl Host {
             next_ticket: Cell::new(1),
             identity: Arc::new(RwLock::new(HashMap::new())),
             wake,
+            extensions: Rc::new(RefCell::new(extensions)),
+            store_jobs: Rc::new(RefCell::new(HashMap::new())),
+            restart_needed: Rc::new(Cell::new(false)),
         });
         host.apply_prefs();
         host
@@ -188,6 +205,43 @@ impl Host {
         }
     }
 
+    /// What the extensions page shows.
+    fn extensions_state(&self) -> Value {
+        extensions_json(&self.extensions.borrow(), self.restart_needed.get())
+    }
+
+    /// Downloads a package from the Chrome Web Store (`url` is a store link or an ID).
+    fn install_from_store(&self, url: &str) -> Value {
+        let Some(id) = store_id(url) else {
+            return json!({"error": "that doesn't look like a Chrome Web Store link"});
+        };
+        let ticket = self.next_ticket.get();
+        self.next_ticket.set(ticket + 1);
+        self.store_jobs.borrow_mut().insert(ticket, StoreJob::Pending);
+        let download = format!(
+            "https://clients2.google.com/service/update2/crx?response=redirect&prodversion={}&acceptformat=crx3&x=id%3D{id}%26installsource%3Dondemand%26uc",
+            engine::CHROMIUM_VERSION
+        );
+        let (jobs, manager, restart, wake) =
+            (self.store_jobs.clone(), self.extensions.clone(), self.restart_needed.clone(), self.wake.clone());
+        engine::fetch(
+            &download,
+            128 * 1024 * 1024,
+            Box::new(move |result| {
+                let job = match result.and_then(|bytes| manager.borrow_mut().install(&bytes)) {
+                    Ok(e) => {
+                        restart.set(true);
+                        StoreJob::Done(e.name)
+                    }
+                    Err(e) => StoreJob::Failed(e),
+                };
+                jobs.borrow_mut().insert(ticket, job);
+                wake();
+            }),
+        );
+        json!({"ticket": ticket})
+    }
+
     /// What the settings and bookmarks pages show.
     fn state(&self) -> Value {
         let profile = self.profile.borrow();
@@ -262,6 +316,49 @@ impl engine::Host for Host {
                 }
                 json!({"ok": true})
             }
+            "extensions" => self.extensions_state(),
+            "installExtension" => {
+                let bytes = B64.decode(params["data"].as_str().unwrap_or_default()).unwrap_or_default();
+                let installed = self.extensions.borrow_mut().install(&bytes);
+                match installed {
+                    Ok(e) => {
+                        self.restart_needed.set(true);
+                        json!({"name": e.name, "state": self.extensions_state()})
+                    }
+                    Err(e) => json!({"error": e}),
+                }
+            }
+            "installFromStore" => self.install_from_store(params["url"].as_str().unwrap_or_default()),
+            "storeResult" => {
+                let ticket = params["ticket"].as_u64().unwrap_or_default();
+                let mut jobs = self.store_jobs.borrow_mut();
+                match jobs.get(&ticket) {
+                    Some(StoreJob::Pending) => json!({"pending": true}),
+                    _ => match jobs.remove(&ticket) {
+                        Some(StoreJob::Done(name)) => json!({"name": name}),
+                        Some(StoreJob::Failed(e)) => json!({"error": e}),
+                        _ => json!({"error": "unknown download"}),
+                    },
+                }
+            }
+            "setExtensionEnabled" => {
+                if let Some(id) = params["id"].as_str() {
+                    self.extensions.borrow_mut().set_enabled(id, params["enabled"].as_bool().unwrap_or(true));
+                    self.restart_needed.set(true);
+                }
+                self.extensions_state()
+            }
+            "removeExtension" => {
+                if let Some(id) = params["id"].as_str() {
+                    self.extensions.borrow_mut().remove(id);
+                    self.restart_needed.set(true);
+                }
+                self.extensions_state()
+            }
+            "restart" => {
+                self.push(Event::Restart);
+                json!({"ok": true})
+            }
             "removeBookmark" => {
                 if let Some(id) = params["id"].as_u64() {
                     self.profile.borrow_mut().remove_bookmark(id);
@@ -293,5 +390,39 @@ impl engine::Host for Host {
 
     fn login_form(&self, browser: i32, url: &str, frame: &str) {
         self.push(Event::LoginForm { browser, url: url.to_owned(), frame: frame.to_owned() });
+    }
+}
+
+fn extensions_json(manager: &extensions::Manager, restart_needed: bool) -> Value {
+    json!({
+        "restartNeeded": restart_needed,
+        "extensions": manager.list().iter().map(|e| json!({
+            "id": e.id,
+            "name": e.name,
+            "version": e.version,
+            "description": e.description,
+            "enabled": e.enabled,
+            "icon": manager.icon_data_url(&e.id),
+        })).collect::<Vec<_>>(),
+    })
+}
+
+/// The extension ID in a Web Store link (`…/detail/<name>/<id>`), or a bare ID.
+fn store_id(input: &str) -> Option<String> {
+    let is_id = |s: &str| s.len() == 32 && s.bytes().all(|b| (b'a'..=b'p').contains(&b));
+    input.split(['/', '?', '#']).map(str::trim).find(|s| is_id(s)).map(str::to_owned)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn web_store_links() {
+        let id = "ddkjiahejlhfcafbddmgiahcphecmpfh";
+        assert_eq!(store_id(&format!("https://chromewebstore.google.com/detail/ublock-origin-lite/{id}?hl=en")).as_deref(), Some(id));
+        assert_eq!(store_id(&format!("https://chrome.google.com/webstore/detail/x/{id}")).as_deref(), Some(id));
+        assert_eq!(store_id(id).as_deref(), Some(id));
+        assert_eq!(store_id("https://example.com/detail/nope"), None);
     }
 }

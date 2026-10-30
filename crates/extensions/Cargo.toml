@@ -1,0 +1,13 @@
+[package]
+name = "unskilled-extensions"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+base64 = "0.22"
+log.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"

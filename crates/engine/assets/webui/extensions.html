@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>extensions</title>
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<main>
+  <h1>extensions<span class="dot">.</span></h1>
+  <p class="lede">add Chrome extensions from a .crx or .zip file, or straight from a Chrome Web Store link.
+     every site's sandbox runs its own copy, so an extension's data stays separate per site too.</p>
+
+  <div class="restart" id="restart" hidden>
+    <span>changes apply after a restart</span>
+    <button class="primary" id="restart-now">restart now</button>
+  </div>
+
+  <section>
+    <h2>add</h2>
+    <div class="drop" id="drop">drop a .crx or .zip here, or <button id="pick">choose a file</button></div>
+    <div class="row">
+      <input type="url" id="store-url" placeholder="https://chromewebstore.google.com/detail/…">
+      <button id="store-add">add from web store</button>
+    </div>
+    <p class="notice">only Manifest V3 extensions run in Chromium 156. store downloads go through your connection like any page.</p>
+  </section>
+
+  <section>
+    <h2>installed</h2>
+    <div id="list"></div>
+  </section>
+</main>
+<script src="/assets/app.js"></script>
+<script src="/assets/extensions.js"></script>
+</body>
+</html>

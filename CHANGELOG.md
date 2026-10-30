@@ -6,11 +6,14 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Extensions page (`unskilled://extensions`): add Chrome extensions from .crx/.zip files or a Chrome Web Store link; enable, disable and remove them (applies on restart).
+  - Packages are unpacked by our own CRX3/ZIP/DEFLATE code.
+  - Web Store packages keep their store ID.
+- Cookie-consent banners are removed (uBlock filters – Cookie Notices, EasyList Cookie).
 - Per-site sandboxes. Every site runs in its own Chromium profile (cookies, storage, cache, connections), with a provider's own sites grouped together.
   - Tabs move between sandboxes when they change site, and back/forward works across those moves.
   - Settings → sites lists every sandbox with a "forget" button.
 - Sign-in sharing copies the provider's sign-in into the site's sandbox when you allow it.
-- Cookie-consent banners are removed (uBlock filters – Cookie Notices, EasyList Cookie).
 
 ### Fixed
 - Windows: the vault kept nothing across restarts, because archive paths used `\`.

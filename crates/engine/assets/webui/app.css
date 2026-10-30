@@ -34,7 +34,7 @@ section > p { color: var(--dim); margin: 0 0 16px; }
   background: var(--dim); transition: transform .25s cubic-bezier(.3,1.4,.5,1), background .2s; }
 .switch input:checked + span { background: var(--text); }
 .switch input:checked + span::after { transform: translateX(18px); background: #000; }
-select, input[type=text], input[type=search] { font: inherit; color: var(--text); background: var(--raised); border: 1px solid var(--line);
+select, input[type=text], input[type=search], input[type=url] { font: inherit; color: var(--text); background: var(--raised); border: 1px solid var(--line);
   border-radius: 10px; padding: 7px 12px; outline: none; }
 select:focus, input:focus { border-color: var(--line-hover); }
 input[type=search] { width: 100%; margin-bottom: 12px; }
@@ -52,3 +52,13 @@ a { color: var(--text); }
 .card { background: var(--raised); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; cursor: pointer; transition: border-color .15s; }
 .card:hover { border-color: var(--line-hover); }
 .card .site { color: var(--faint); font-size: 11px; }
+.restart[hidden] { display: none; }
+.restart { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--accent);
+  border-radius: 14px; padding: 10px 14px; margin: 0 0 18px; }
+.drop { border: 1px dashed var(--line-hover); border-radius: 14px; padding: 22px; text-align: center; color: var(--dim); }
+.drop.over { border-color: var(--text); color: var(--text); }
+.extension .icon { width: 32px; height: 32px; border-radius: 8px; flex: none; object-fit: contain; }
+.extension .icon.blank { background: var(--line); }
+.extension.off .icon, .extension.off .label { opacity: .45; }
+.extension .version, .extension .id { color: var(--faint); font-size: 11px; }
+input[type=url] { flex: 1; }

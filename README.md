@@ -52,6 +52,11 @@ Pages reach the screen without a CPU copy, as DMA-BUFs on Linux and as D3D11 sha
   - Import from Google Password Manager, Chrome or Firefox (.csv).
 - **Bookmarks:** ctrl+d, a bookmarks page, tiles on the start page, and import from any browser's .html export.
 - **Settings** at `unskilled://settings`: search engine (DuckDuckGo, Mullvad Leta, Brave Search, Startpage), sign-in decisions, passwords, vault.
+- **Chrome extensions** at `unskilled://extensions`:
+  - add from a .crx or .zip file, or paste a Chrome Web Store link;
+  - enable, disable or remove;
+  - packages are unpacked by the browser's own CRX/ZIP code;
+  - every site's sandbox runs its own copy, so extension data is separated per site too.
 - **Mullvad status** in the bar, read from the local Mullvad app.
 
 **Developers**
@@ -123,7 +128,7 @@ Planned work ([docs/PLAN.md](docs/PLAN.md) has the full design):
 - Profiles.
 - Browser personas (fingerprint shaping).
 - In-browser Mullvad exits per sandbox, and a kill switch.
-- Chrome Web Store extensions.
+- Extension toolbar buttons and popups.
 - A Wireshark-style traffic panel with pcapng export.
 - A privacy-patched Chromium build.
 

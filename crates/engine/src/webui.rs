@@ -57,10 +57,12 @@ fn asset(page: &str, path: &str) -> Option<(&'static str, &'static [u8])> {
     Some(match (page, path) {
         ("settings", "") => ("text/html", include_bytes!("../assets/webui/settings.html")),
         ("bookmarks", "") => ("text/html", include_bytes!("../assets/webui/bookmarks.html")),
+        ("extensions", "") => ("text/html", include_bytes!("../assets/webui/extensions.html")),
         (_, "assets/app.css") => ("text/css", include_bytes!("../assets/webui/app.css")),
         (_, "assets/app.js") => ("application/javascript", include_bytes!("../assets/webui/app.js")),
         ("settings", "assets/settings.js") => ("application/javascript", include_bytes!("../assets/webui/settings.js")),
         ("bookmarks", "assets/bookmarks.js") => ("application/javascript", include_bytes!("../assets/webui/bookmarks.js")),
+        ("extensions", "assets/extensions.js") => ("application/javascript", include_bytes!("../assets/webui/extensions.js")),
         (_, "assets/font.ttf") => ("font/ttf", FONT),
         (_, "assets/font-medium.ttf") => ("font/ttf", FONT_MEDIUM),
         _ => return None,
