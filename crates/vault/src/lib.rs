@@ -329,6 +329,9 @@ fn write_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
     file.write_all(data)?;
     file.sync_all()?;
     fs::rename(&tmp, path)?;
+    // Make the rename itself durable. Unix only: Windows can't open a directory as a file (and
+    // its rename is already journaled by NTFS).
+    #[cfg(unix)]
     if let Some(dir) = path.parent() {
         File::open(dir)?.sync_all()?;
     }
