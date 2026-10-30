@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-30
+
+### Fixed
+- Windows: a console window flashed every few seconds while the browser ran, with Mullvad installed. The Mullvad status check now runs its command without a window.
+
 ## [0.2.1] - 2026-10-30
 
 ### Fixed

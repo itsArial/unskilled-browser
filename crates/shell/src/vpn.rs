@@ -2,7 +2,6 @@
 //! Placeholder for the `tunnel` crate (P3), which will talk to the daemon's management socket.
 
 use std::{
-    process::Command,
     sync::{Arc, Mutex},
     thread,
     time::Duration,
@@ -51,7 +50,7 @@ pub fn watch(on_change: impl Fn() + Send + 'static) -> Arc<Mutex<VpnStatus>> {
     thread::Builder::new()
         .name("vpn-status".into())
         .spawn(move || loop {
-            let next = match Command::new("mullvad").args(["status", "-v"]).output() {
+            let next = match crate::console_tool("mullvad").args(["status", "-v"]).output() {
                 Ok(out) => VpnStatus::parse(&String::from_utf8_lossy(&out.stdout)),
                 Err(_) => VpnStatus::Missing,
             };
