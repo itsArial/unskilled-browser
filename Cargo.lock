@@ -3417,6 +3417,7 @@ dependencies = [
  "unskilled-ui",
  "unskilled-vault",
  "wgpu",
+ "windows-sys 0.61.2",
  "winit",
  "winresource",
  "zeroize",
@@ -3491,6 +3492,16 @@ dependencies = [
  "tss-esapi",
  "zeroize",
  "zstd",
+]
+
+[[package]]
+name = "unskilled-winmain"
+version = "0.1.0"
+dependencies = [
+ "cef-dll-sys",
+ "unskilled",
+ "windows-sys 0.61.2",
+ "winresource",
 ]
 
 [[package]]

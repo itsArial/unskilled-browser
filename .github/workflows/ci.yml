@@ -69,6 +69,24 @@ jobs:
         run: |
           set -o pipefail
           cargo test --workspace --locked --no-fail-fast 2>&1 | tee -a ci.log
+      # The bundle's sandboxed entry: CEF's bootstrap.exe rebranded, and the DLL it loads.
+      - name: sandbox entry
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo build --locked -p unskilled-winmain 2>&1 | tee -a ci.log
+          dll=target/debug/unskilled_winmain.dll
+          dumpbin -nologo -exports $dll | grep -w RunWinMain
+          # Sandboxed renderers can't load user32/gdi32: the DLL may only delay-load them.
+          deps=$(dumpbin -nologo -dependents $dll | tr -d '\r')
+          echo "$deps"
+          if echo "$deps" | sed -n '/following dependencies/,/delay load dependencies/p' | grep -iwE "user32|gdi32"; then
+            echo "unskilled_winmain.dll loads user32/gdi32 at startup" | tee -a ci.log; exit 1
+          fi
+          exe=$(ls -dt target/debug/build/unskilled-winmain-*/out/unskilled.exe | head -1)
+          name=$(powershell -NoProfile -Command "(Get-Item '$exe').VersionInfo.FileDescription" | tr -d '\r')
+          echo "unskilled.exe: $name" | tee -a ci.log
+          [[ $name == "unskilled browser" ]]
       # Annotations are readable without access to the logs.
       - name: surface failures
         if: failure()
