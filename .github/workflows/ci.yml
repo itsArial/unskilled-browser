@@ -26,8 +26,23 @@ jobs:
             libwayland-dev libxkbcommon-dev libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 \
             libdrm2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2t64
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - run: cargo test --workspace --locked
+      - name: clippy
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo clippy --workspace --all-targets --locked -- -D warnings 2>&1 | tee -a ci.log
+      - name: test
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --workspace --locked --no-fail-fast 2>&1 | tee -a ci.log
+      # Annotations are readable without access to the logs.
+      - name: surface failures
+        if: failure()
+        shell: bash
+        run: |
+          grep -E -A3 "^error|panicked|FAILED|failed to run|STATUS_|exit code" ci.log | head -60 |
+            while IFS= read -r line; do echo "::error::$line"; done
 
   windows:
     runs-on: windows-2022
@@ -40,5 +55,20 @@ jobs:
       - name: ninja
         run: choco install ninja -y --no-progress
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - run: cargo test --workspace --locked
+      - name: clippy
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo clippy --workspace --all-targets --locked -- -D warnings 2>&1 | tee -a ci.log
+      - name: test
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --workspace --locked --no-fail-fast 2>&1 | tee -a ci.log
+      # Annotations are readable without access to the logs.
+      - name: surface failures
+        if: failure()
+        shell: bash
+        run: |
+          grep -E -A3 "^error|panicked|FAILED|failed to run|STATUS_|exit code" ci.log | head -60 |
+            while IFS= read -r line; do echo "::error::$line"; done

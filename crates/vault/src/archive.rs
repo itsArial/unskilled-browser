@@ -62,8 +62,8 @@ pub fn pack(root: &Path) -> io::Result<Vec<u8>> {
             if !meta.is_file() {
                 continue;
             }
-            let Some(rel) = path.strip_prefix(root).ok().and_then(|r| r.to_str()) else { continue };
-            if !keep(rel) {
+            let Some(rel) = path.strip_prefix(root).ok().and_then(portable) else { continue };
+            if !keep(&rel) {
                 continue;
             }
             // Files can vanish while Chromium runs (checkpoints); skip those.
@@ -75,6 +75,19 @@ pub fn pack(root: &Path) -> io::Result<Vec<u8>> {
         }
     }
     zstd::encode_all(&raw[..], 3)
+}
+
+/// `profile\Default\Cookies` → `profile/Default/Cookies`: the allowlist and the archive always
+/// use `/`, whatever the platform's separator.
+fn portable(rel: &Path) -> Option<String> {
+    let parts: Option<Vec<&str>> = rel
+        .components()
+        .map(|c| match c {
+            Component::Normal(part) => part.to_str(),
+            _ => None,
+        })
+        .collect();
+    Some(parts?.join("/"))
 }
 
 pub fn unpack(archive: &[u8], root: &Path) -> io::Result<()> {
@@ -124,7 +137,13 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
+    fn paths_are_portable() {
+        let rel = Path::new("profile").join("Default").join("Cookies");
+        assert_eq!(portable(&rel).as_deref(), Some("profile/Default/Cookies"));
+        assert!(keep(&portable(&rel).unwrap()));
+    }
+
+    #[test]
     fn round_trip_drops_history() {
         let base = std::env::temp_dir().join(format!("unskilled-archive-test-{}", std::process::id()));
         let src = base.join("src");
@@ -134,6 +153,7 @@ mod tests {
         fs::write(src.join("profile/Default/Cookies"), b"session=abc").unwrap();
         fs::write(src.join("profile/Default/History"), b"https://secret.example").unwrap();
         fs::write(src.join("profile/Default/Local Storage/leveldb/000003.log"), b"login").unwrap();
+        #[cfg(unix)]
         std::os::unix::fs::symlink("/etc/passwd", src.join("profile/SingletonLock")).unwrap();
 
         let archive = pack(&src).unwrap();
