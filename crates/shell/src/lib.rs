@@ -739,6 +739,21 @@ impl ApplicationHandler<UserEvent> for App {
     }
 }
 
+/// A command-line tool to run in the background. On Windows a GUI app gets a console window for
+/// every console program it starts unless it asks for none (the Mullvad status poll flashed one
+/// every few seconds).
+fn console_tool(program: &str) -> std::process::Command {
+    #[allow(unused_mut)]
+    let mut command = std::process::Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
+}
+
 /// Opens the vault, waiting a little for an instance that is still exiting: a restart into an
 /// update starts the new process before the old one has let go of the vault (Windows).
 fn open_vault(dir: PathBuf) -> Result<vault::Vault, vault::Error> {

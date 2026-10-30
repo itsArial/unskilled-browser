@@ -235,7 +235,7 @@ fn remove_unused(versions: &Path) {
 fn point_current(root: &Path, dir: &Path) -> std::io::Result<()> {
     let (current, next) = (root.join("current"), root.join("current.new"));
     let _ = fs::remove_dir(&next);
-    let made = hidden("cmd").args(["/c", "mklink", "/J"]).arg(plain(&next)).arg(plain(dir)).status()?;
+    let made = crate::console_tool("cmd").args(["/c", "mklink", "/J"]).arg(plain(&next)).arg(plain(dir)).status()?;
     if !made.success() {
         return Err(std::io::Error::other("mklink failed"));
     }
@@ -255,21 +255,11 @@ fn point_current(_root: &Path, _dir: &Path) -> std::io::Result<()> {
 #[cfg(windows)]
 fn register_version(version: &str) {
     let key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\unskilled-browser";
-    let _ = hidden("reg").args(["add", key, "/v", "DisplayVersion", "/d", version, "/f"]).status();
+    let _ = crate::console_tool("reg").args(["add", key, "/v", "DisplayVersion", "/d", version, "/f"]).status();
 }
 
 #[cfg(not(windows))]
 fn register_version(_version: &str) {}
-
-/// A console tool, run without flashing a console window.
-#[cfg(windows)]
-fn hidden(program: &str) -> std::process::Command {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let mut command = std::process::Command::new(program);
-    command.creation_flags(CREATE_NO_WINDOW);
-    command
-}
 
 /// `path` without the `\\?\` prefix `canonicalize` adds, which cmd's tools don't take.
 pub fn plain(path: &Path) -> PathBuf {
