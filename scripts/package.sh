@@ -3,7 +3,9 @@
 #   dist/unskilled-browser-<version>-linux-x86_64.tar.gz   (Linux)
 #   dist/unskilled-browser-<version>-windows-x86_64.zip    (Windows, run from Git Bash)
 # plus a .sha256 next to each. The bundle is the binary with the stripped CEF runtime beside it;
-# it runs from wherever it's unpacked.
+# it runs from wherever it's unpacked. On Windows the binary is CEF's bootstrap.exe as unskilled.exe
+# (our icon and version info, crates/winmain/build.rs) loading the browser from unskilled.dll:
+# that is what runs Chromium's sub-processes sandboxed there.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -14,7 +16,11 @@ case "$(uname -s)" in
     *) echo "unsupported platform: $(uname -s)" >&2; exit 1 ;;
 esac
 
-cargo build --release --locked -p unskilled
+if [[ $os == linux ]]; then
+    cargo build --release --locked -p unskilled
+else
+    cargo build --release --locked -p unskilled-winmain
+fi
 cef=$(ls -dt target/release/build/cef-dll-sys-*/out/cef_${os}_x86_64 | head -1)
 
 name="unskilled-browser-$version-$os-x86_64"
@@ -34,7 +40,9 @@ if [[ $os == linux ]]; then
     cp assets/icons/unskilled-browser-*.png "$out/icons/"
 else
     cp "$cef"/*.dll "$cef"/*.dat "$cef"/*.bin "$cef"/*.pak "$cef/vk_swiftshader_icd.json" "$out/"
-    cp target/release/unskilled.exe "$out/unskilled.exe"
+    # The bootstrap loads <its own name>.dll from its directory.
+    cp "$(ls -dt target/release/build/unskilled-winmain-*/out/unskilled.exe | head -1)" "$out/unskilled.exe"
+    cp target/release/unskilled_winmain.dll "$out/unskilled.dll"
 fi
 # Only the UI locale in use (en-US); the full set is 50 MB.
 cp "$cef"/locales/en-US*.pak "$out/locales/"

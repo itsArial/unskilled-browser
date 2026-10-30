@@ -11,9 +11,11 @@ All notable changes to this project are documented here. The format follows
   - Settings → sites lists every sandbox with a "forget" button.
 - Sign-in sharing copies the provider's sign-in into the site's sandbox when you allow it.
 - Cookie-consent banners are removed (uBlock filters – Cookie Notices, EasyList Cookie).
+- Windows: Chromium's sandbox. The bundle's `unskilled.exe` is now CEF's `bootstrap.exe` (with our icon and name), which sandboxes the renderer, GPU and utility processes and runs the browser from `unskilled.dll`.
 
 ### Fixed
 - Windows: the vault kept nothing across restarts, because archive paths used `\`.
+- Windows: logging off or shutting down with the browser open saves the vault, as on Linux. Before, only closing the window did. Ctrl+C and closing the console of a debug build save it too.
 
 ## [0.1.0] - 2026-10-30
 
