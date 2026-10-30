@@ -1,6 +1,6 @@
 name: diagnose
 
-# Temporary: runs the published v0.2.0 Windows release on a runner and collects why it exits.
+# Temporary: runs the published Windows releases on a runner and collects why they exit.
 on:
   push:
     branches: [claude/trusting-lamport-dvcfo5]
@@ -12,51 +12,35 @@ jobs:
   windows:
     runs-on: windows-2022
     steps:
-      - name: download v0.2.0
+      - name: download
         shell: pwsh
         run: |
-          $base = "https://github.com/itsArial/unskilled-browser/releases/download/v0.2.0"
-          Invoke-WebRequest "$base/unskilled-browser-0.2.0-windows-x86_64.zip" -OutFile bundle.zip
-          Invoke-WebRequest "$base/unskilled-browser-0.2.0-windows-x86_64-setup.exe" -OutFile setup.exe
-          Expand-Archive bundle.zip -DestinationPath portable
-          Get-ChildItem portable\* | Format-Table Name, Length
+          foreach ($v in "0.1.0", "0.2.0") {
+            Invoke-WebRequest "https://github.com/itsArial/unskilled-browser/releases/download/v$v/unskilled-browser-$v-windows-x86_64.zip" -OutFile "$v.zip"
+            Expand-Archive "$v.zip" -DestinationPath "r$v"
+          }
 
-      - name: run the portable bundle
+      - name: v0.1.0 (plain exe, no sandbox)
         shell: pwsh
         continue-on-error: true
         run: |
-          $dir = (Resolve-Path portable\unskilled-browser-0.2.0-windows-x86_64).Path
+          $dir = (Resolve-Path r0.1.0\unskilled-browser-0.1.0-windows-x86_64).Path
           $env:RUST_LOG = "debug,wgpu_core=warn,wgpu_hal=warn,naga=warn"
-          $p = Start-Process "$dir\unskilled.exe" -WorkingDirectory $dir -PassThru `
-                 -RedirectStandardError "$pwd\portable-stderr.txt" -RedirectStandardOutput "$pwd\portable-stdout.txt"
-          if ($p.WaitForExit(45000)) { "EXITED with code $($p.ExitCode) (0x{0:X})" -f $p.ExitCode } else { "STILL RUNNING after 45 s" }
-          Get-Process unskilled -ErrorAction SilentlyContinue | Format-Table Id, StartTime, MainWindowTitle
+          $p = Start-Process "$dir\unskilled.exe" -WorkingDirectory $dir -PassThru -RedirectStandardError "$pwd\v1-stderr.txt"
+          if ($p.WaitForExit(30000)) { "EXITED with code $($p.ExitCode) (0x{0:X})" -f $p.ExitCode } else { "STILL RUNNING after 30 s" }
           Get-Process unskilled -ErrorAction SilentlyContinue | Stop-Process -Force
-          "--- stderr"; Get-Content portable-stderr.txt -ErrorAction SilentlyContinue
-          "--- stdout"; Get-Content portable-stdout.txt -ErrorAction SilentlyContinue
-          "--- debug.log"; Get-Content "$dir\debug.log" -ErrorAction SilentlyContinue | Select-Object -Last 80
+          Get-Content v1-stderr.txt -ErrorAction SilentlyContinue | Select-Object -First 60
+          Remove-Item -Recurse -Force "$env:LOCALAPPDATA\unskilled-browser" -ErrorAction SilentlyContinue
 
-      - name: install and run through current
+      - name: v0.2.0 under cdb
         shell: pwsh
         continue-on-error: true
         run: |
-          Start-Process .\setup.exe -ArgumentList "/S" -Wait
-          $dir = "$env:LOCALAPPDATA\Programs\unskilled-browser"
-          Get-ChildItem $dir | Format-Table Name, LinkType, Target
-          $env:RUST_LOG = "debug,wgpu_core=warn,wgpu_hal=warn,naga=warn"
-          $p = Start-Process "$dir\current\unskilled.exe" -PassThru `
-                 -RedirectStandardError "$pwd\installed-stderr.txt" -RedirectStandardOutput "$pwd\installed-stdout.txt"
-          if ($p.WaitForExit(45000)) { "EXITED with code $($p.ExitCode) (0x{0:X})" -f $p.ExitCode } else { "STILL RUNNING after 45 s" }
-          Get-Process unskilled -ErrorAction SilentlyContinue | Stop-Process -Force
-          "--- stderr"; Get-Content installed-stderr.txt -ErrorAction SilentlyContinue
-          "--- debug.log"; Get-Content "$dir\current\debug.log" -ErrorAction SilentlyContinue | Select-Object -Last 80
-
-      - name: crash reports
-        if: always()
-        shell: pwsh
-        run: |
-          Get-WinEvent -FilterHashtable @{LogName='Application'; StartTime=(Get-Date).AddMinutes(-20)} -ErrorAction SilentlyContinue |
-            Where-Object { $_.ProviderName -in 'Application Error','Windows Error Reporting','Application Hang','SideBySide' } |
-            ForEach-Object { "[$($_.TimeCreated)] $($_.ProviderName) $($_.Id)"; $_.Message; "" }
-          "--- unskilled data dir"
-          Get-ChildItem -Recurse "$env:LOCALAPPDATA\unskilled-browser" -ErrorAction SilentlyContinue | Select-Object -First 40 | Format-Table FullName, Length
+          $cdb = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $cdb) { $cdb = Get-ChildItem -Recurse "C:\Program Files (x86)\Windows Kits" -Filter cdb.exe -ErrorAction SilentlyContinue | Select-Object -First 1 }
+          "cdb: $($cdb.FullName)"
+          $dir = (Resolve-Path r0.2.0\unskilled-browser-0.2.0-windows-x86_64).Path
+          $env:_NT_SYMBOL_PATH = "srv*$env:RUNNER_TEMP\sym*https://msdl.microsoft.com/download/symbols"
+          Push-Location $dir
+          & $cdb.FullName -lines -c "g; .lastevent; .exr -1; r; kn 60; lm o; q" "$dir\unskilled.exe" 2>&1 | Select-Object -Last 150
+          Pop-Location
