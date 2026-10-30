@@ -25,7 +25,8 @@ SetCompressor /SOLID lzma
 
 !define APP "unskilled browser"
 !define KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\unskilled-browser"
-!define ICON "${__FILEDIR__}\..\assets\icons\unskilled-browser.ico"
+; makensis works from the script's folder.
+!define ICON "..\assets\icons\unskilled-browser.ico"
 
 Name "${APP}"
 OutFile "${OUTFILE}"
