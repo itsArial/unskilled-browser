@@ -3300,7 +3300,7 @@ dependencies = [
 
 [[package]]
 name = "unskilled"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arboard",
  "base64 0.22.1",
@@ -3326,7 +3326,7 @@ dependencies = [
 
 [[package]]
 name = "unskilled-engine"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "cef",
@@ -3341,7 +3341,7 @@ dependencies = [
 
 [[package]]
 name = "unskilled-extensions"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "log",
@@ -3352,7 +3352,7 @@ dependencies = [
 
 [[package]]
 name = "unskilled-netinfo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "flate2",
  "log",
@@ -3361,7 +3361,7 @@ dependencies = [
 
 [[package]]
 name = "unskilled-profile"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "log",
  "serde",
@@ -3370,7 +3370,7 @@ dependencies = [
 
 [[package]]
 name = "unskilled-shield"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "adblock",
  "base64 0.22.1",
@@ -3382,7 +3382,7 @@ dependencies = [
 
 [[package]]
 name = "unskilled-ui"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytemuck",
  "log",
@@ -3392,7 +3392,7 @@ dependencies = [
 
 [[package]]
 name = "unskilled-vault"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "argon2",
  "base64 0.22.1",
@@ -3408,7 +3408,7 @@ dependencies = [
 
 [[package]]
 name = "unskilled-winmain"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cef-dll-sys",
  "unskilled",

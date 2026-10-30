@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-30
+
 ### Added
 - Extensions page (`unskilled://extensions`): add Chrome extensions from .crx/.zip files or a Chrome Web Store link; enable, disable and remove them (applies on restart).
   - Packages are unpacked by our own CRX3/ZIP/DEFLATE code.
