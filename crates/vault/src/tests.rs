@@ -79,6 +79,7 @@ fn recovers_session_after_crash() {
     let session = vault.create(PASS).unwrap();
     fs::create_dir_all(session.profile_dir().join("Default")).unwrap();
     fs::write(session.profile_dir().join("Default/Cookies"), b"newer").unwrap();
+    #[cfg(unix)]
     std::os::unix::fs::symlink("x", session.profile_dir().join("SingletonLock")).unwrap();
     // Simulated crash: no close(), the RAM copy stays behind.
     drop(session);

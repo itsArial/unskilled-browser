@@ -59,7 +59,9 @@ enum UserEvent {
     Pump(i64),
     /// The vault worker finished unlocking (or creating).
     Unlocked,
-    /// SIGTERM/SIGINT/SIGHUP (logout, shutdown, Ctrl+C): save the vault and exit.
+    /// SIGTERM/SIGINT/SIGHUP (logout, shutdown, Ctrl+C): save the vault and exit. Unix only;
+    /// on Windows the window's close request does the same.
+    #[cfg_attr(windows, allow(dead_code))]
     Quit,
     /// A newer build was installed over this one.
     UpdateReady,
