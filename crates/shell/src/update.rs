@@ -1,6 +1,7 @@
-//! Notices when a newer build has been installed (scripts/install.sh puts each build in its own
-//! version directory and flips the `current` symlink), so the shell can offer a restart into it.
-//! The running version's files stay on disk until it exits.
+//! Notices when a newer build has been installed (scripts/install.sh on Linux, the installer or the
+//! updater on Windows put each build in its own version directory and flip the `current` symlink or
+//! junction), so the shell can offer a restart into it. The running version's files stay on disk
+//! until it exits.
 
 use std::{
     path::{Path, PathBuf},
@@ -17,15 +18,23 @@ fn current_link(exe: &Path) -> Option<PathBuf> {
     (versions.file_name()? == "versions").then(|| versions.parent().map(|root| root.join("current")))?
 }
 
+/// Our executable inside its version directory: started through `current`, Windows reports the
+/// junction's path, so it is resolved (Linux already reports the real one).
+fn own_exe() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    Some(std::fs::canonicalize(&exe).unwrap_or(exe))
+}
+
 /// What a restart should launch: the newest installed build, or ourselves when not installed.
 pub fn restart_target() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    Some(current_link(&exe).map_or(exe, |link| link.join(format!("unskilled{}", std::env::consts::EXE_SUFFIX))))
+    let exe = own_exe()?;
+    let target = current_link(&exe).map_or(exe, |link| link.join(format!("unskilled{}", std::env::consts::EXE_SUFFIX)));
+    Some(crate::updater::plain(&target))
 }
 
 /// Calls `on_update` once, when `current` points at a different version than ours.
 pub fn watch(on_update: impl Fn() + Send + 'static) {
-    let Some(exe) = std::env::current_exe().ok() else { return };
+    let Some(exe) = own_exe() else { return };
     let (Some(link), Some(ours)) = (current_link(&exe), exe.parent().map(Path::to_path_buf)) else { return };
     let _ = thread::Builder::new().name("update-watch".into()).spawn(move || loop {
         thread::sleep(POLL);

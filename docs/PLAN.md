@@ -307,6 +307,12 @@ images crash the GPU process in windowless mode.
   `unskilled.exe`, icon and version info swapped by `crates/winmain/build.rs`, and it loads the
   browser from `unskilled.dll` (`crates/winmain`, exporting `RunWinMain`), passing the sandbox
   info on to `CefExecuteProcess`/`CefInitialize`. `cargo run` stays an unsandboxed plain exe.
+- Windows install: `scripts/installer.nsi` (NSIS, per-user, `%LOCALAPPDATA%\Programs\unskilled-browser`)
+  lays out `versions\<v>\` + a `current` junction, like the Linux install. The browser updates
+  itself (`shell/src/updater.rs`): on request (settings button, or the opt-in check at start) it
+  reads the GitHub releases list through `engine::fetch`, downloads the Windows zip and its
+  `.sha256`, unpacks with our ZIP reader into a new version folder, flips `current`, and the
+  update watcher offers "update · restart".
 
 ## 11. Per-site sandboxes (shipped after 0.1)
 

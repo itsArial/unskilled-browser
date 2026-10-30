@@ -87,6 +87,32 @@ jobs:
           name=$(powershell -NoProfile -Command "(Get-Item '$exe').VersionInfo.FileDescription" | tr -d '\r')
           echo "unskilled.exe: $name" | tee -a ci.log
           [[ $name == "unskilled browser" ]]
+      # The installer, on a stand-in bundle: two versions in a row, then the uninstaller.
+      - name: installer
+        shell: bash
+        env:
+          MSYS_NO_PATHCONV: 1
+        run: |
+          set -o pipefail
+          bundle="$RUNNER_TEMP/bundle"
+          inst="$(cygpath -w "$RUNNER_TEMP/unskilled-install")"
+          key='HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\unskilled-browser'
+          mkdir -p "$bundle/locales"
+          cp "$(ls -dt target/debug/build/unskilled-winmain-*/out/unskilled.exe | head -1)" "$bundle/unskilled.exe"
+          cp target/debug/unskilled_winmain.dll "$bundle/unskilled.dll"
+          echo test > "$bundle/locales/en-US.pak"
+          for v in 0.0.1 0.0.2; do
+            makensis -V2 -DVERSION=$v -DBUNDLE="$(cygpath -w "$bundle")" -DOUTFILE="$(cygpath -w "$RUNNER_TEMP/setup-$v.exe")" scripts/installer.nsi
+            "$RUNNER_TEMP/setup-$v.exe" /S /D=$inst
+          done
+          target=$(powershell -NoProfile -Command "(Get-Item '$inst\current').Target" | tr -d '\r')
+          echo "current -> $target"
+          [[ $target == *'\versions\0.0.2' ]]
+          test -f "$inst/current/unskilled.exe" -a -d "$inst/versions/0.0.1"
+          reg query "$key" /v DisplayVersion | grep -w 0.0.2
+          "$inst/uninstall.exe" /S _?=$inst
+          test ! -e "$inst/versions" -a ! -e "$inst/current"
+          if reg query "$key" > /dev/null 2>&1; then echo "uninstall left the registry entry"; exit 1; fi
       # Annotations are readable without access to the logs.
       - name: surface failures
         if: failure()

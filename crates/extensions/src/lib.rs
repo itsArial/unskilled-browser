@@ -8,6 +8,8 @@ mod inflate;
 mod zip;
 
 pub use crx::id_from;
+/// The ZIP reader, also used to unpack browser updates on Windows.
+pub use zip::{Entry as ZipEntry, Error as ZipError, read as unzip};
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use serde::{Deserialize, Serialize};

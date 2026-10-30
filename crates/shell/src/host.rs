@@ -2,7 +2,7 @@
 //! from the profile and the vault. Calls that need the rest of the shell (a new tab, a PIN prompt)
 //! are queued as `Event`s and handled on the next frame.
 
-use crate::clipboard;
+use crate::{clipboard, updater};
 use profile::{Decision, Prefs, Profile, SearchEngine};
 use serde_json::{Value, json};
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
@@ -66,6 +66,7 @@ pub struct Host {
     store_jobs: Rc<RefCell<HashMap<u64, StoreJob>>>,
     /// Extensions changed since Chromium started: they apply on restart.
     restart_needed: Rc<Cell<bool>>,
+    updates: updater::Shared,
 }
 
 impl Host {
@@ -81,6 +82,7 @@ impl Host {
             extensions: Rc::new(RefCell::new(extensions)),
             store_jobs: Rc::new(RefCell::new(HashMap::new())),
             restart_needed: Rc::new(Cell::new(false)),
+            updates: updater::Shared::default(),
         });
         host.apply_prefs();
         host
@@ -205,6 +207,13 @@ impl Host {
         }
     }
 
+    /// The opt-in check at start: only says something when there is an update.
+    pub fn check_updates_at_start(&self) {
+        if self.prefs().check_updates && updater::install_root().is_some() {
+            updater::check(&self.updates, true);
+        }
+    }
+
     /// What the extensions page shows.
     fn extensions_state(&self) -> Value {
         extensions_json(&self.extensions.borrow(), self.restart_needed.get())
@@ -265,6 +274,8 @@ impl Host {
             "vault": if protection == vault::Protection::Tpm { "tpm" } else { "passphrase" },
             "tpmAvailable": self.vault.can_upgrade(),
             "version": env!("CARGO_PKG_VERSION"),
+            "updates": updater::install_root().is_some(),
+            "update": self.updates.lock().unwrap().json(),
             "chromium": engine::CHROMIUM_VERSION,
             "source": SOURCE,
         })
@@ -355,6 +366,11 @@ impl engine::Host for Host {
                 }
                 self.extensions_state()
             }
+            "checkUpdates" => {
+                updater::check(&self.updates, false);
+                self.updates.lock().unwrap().json()
+            }
+            "updateStatus" => self.updates.lock().unwrap().json(),
             "restart" => {
                 self.push(Event::Restart);
                 json!({"ok": true})

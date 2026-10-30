@@ -16,6 +16,7 @@ mod shell;
 mod signals;
 mod theme;
 mod update;
+mod updater;
 mod vpn;
 
 use lock::{LockScreen, Submit};
@@ -487,6 +488,7 @@ impl App {
         let Some(vault) = self.vault.clone() else { return };
         let host = host::Host::new(profile, vault, notify.clone(), extensions);
         engine::set_host(host.clone());
+        host.check_updates_at_start();
         // Dev builds only: `UNSKILLED_DEV_STORE=<id>` runs a Web Store install like the page does.
         #[cfg(debug_assertions)]
         if let Ok(id) = std::env::var("UNSKILLED_DEV_STORE") {
@@ -566,7 +568,7 @@ impl ApplicationHandler<UserEvent> for App {
         self.shield = Some(shield);
         self.engine_gpu = Some(engine_gpu);
 
-        let vault = match vault::Vault::open(data.join("vault")) {
+        let vault = match open_vault(data.join("vault")) {
             Ok(vault) => Arc::new(vault),
             Err(e) => {
                 log::error!("{e}");
@@ -576,6 +578,7 @@ impl ApplicationHandler<UserEvent> for App {
         };
         self.lock = Some(LockScreen::new(vault.state(), vault.tpm_denied()));
         self.vault = Some(vault);
+        updater::clean_up();
 
         // Dev builds only: `UNSKILLED_DEV_PIN` types the PIN, for automated runs.
         #[cfg(debug_assertions)]
@@ -733,6 +736,18 @@ impl ApplicationHandler<UserEvent> for App {
 
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
         self.shutdown();
+    }
+}
+
+/// Opens the vault, waiting a little for an instance that is still exiting: a restart into an
+/// update starts the new process before the old one has let go of the vault (Windows).
+fn open_vault(dir: PathBuf) -> Result<vault::Vault, vault::Error> {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        match vault::Vault::open(dir.clone()) {
+            Err(vault::Error::AlreadyRunning) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(100)),
+            result => return result,
+        }
     }
 }
 
