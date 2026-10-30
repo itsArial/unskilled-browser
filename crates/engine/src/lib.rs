@@ -19,7 +19,14 @@ pub use inspect::{Inspect, Request, Tls};
 pub use tab::{Button, ContextMenu, Cursor, Gpu, Key, KeyKind, MenuItem, Tab, TabState, commands, modifiers};
 
 use cef::{args::Args, *};
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    ffi::c_void,
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicPtr, Ordering},
+    },
+};
 
 /// Called (from any thread) when CEF wants `pump()` run after `delay_ms`.
 pub type SchedulePump = Arc<dyn Fn(i64) + Send + Sync>;
@@ -41,15 +48,21 @@ static EXTENSIONS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 /// The Chromium this build embeds (CEF 156).
 pub const CHROMIUM_VERSION: &str = "156.0.8078.48";
 
+/// Windows: the sandbox info CEF's bootstrap.exe set up before our code ran. Null without the
+/// bootstrap (sub-processes then run unsandboxed) and on Linux, whose sandbox needs no handle.
+static SANDBOX: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
+
 /// Chromium relaunches this executable for its renderer, GPU and utility processes.
-/// Call first thing in `main`; returns the exit code when this is one of those processes.
-pub fn subprocess() -> Option<i32> {
+/// Call first thing in `main` with the Windows sandbox info (or null); returns the exit code when
+/// this is one of those processes.
+pub fn subprocess(sandbox: *mut c_void) -> Option<i32> {
+    SANDBOX.store(sandbox, Ordering::Relaxed);
     let _ = api_hash(sys::CEF_API_VERSION_LAST, 0);
     let args = Args::new();
     let cmd = args.as_cmd_line()?;
     let is_browser = cmd.has_switch(Some(&CefString::from("type"))) == 0;
     let mut app = BrowserApp::new(None);
-    let code = execute_process(Some(args.as_main_args()), Some(&mut app), std::ptr::null_mut());
+    let code = execute_process(Some(args.as_main_args()), Some(&mut app), sandbox.cast());
     (!is_browser).then_some(code)
 }
 
@@ -60,6 +73,10 @@ pub fn initialize(config: Config) -> Result<(), String> {
 
     let args = Args::new();
     let profile = CefString::from(config.profile_dir.to_string_lossy().as_ref());
+    let sandbox = SANDBOX.load(Ordering::Relaxed);
+    if cfg!(windows) {
+        log::info!("engine: chromium sandbox {}", if sandbox.is_null() { "off (not started by the bootstrap)" } else { "on" });
+    }
     let settings = Settings {
         windowless_rendering_enabled: 1,
         external_message_pump: 1,
@@ -68,6 +85,7 @@ pub fn initialize(config: Config) -> Result<(), String> {
         persist_session_cookies: 1,
         // The shell handles SIGTERM/SIGINT itself so the vault is saved before exit.
         disable_signal_handlers: 1,
+        no_sandbox: (cfg!(windows) && sandbox.is_null()) as i32,
         log_severity: LogSeverity::ERROR,
         locale: CefString::from("en-US"),
         // Opaque white under pages that don't paint a background.
@@ -77,7 +95,7 @@ pub fn initialize(config: Config) -> Result<(), String> {
     let paths: Vec<String> = config.extensions.iter().map(|p| p.to_string_lossy().into_owned()).filter(|p| !p.contains(',')).collect();
     let _ = EXTENSIONS.set(paths.join(","));
     let mut app = BrowserApp::new(Some(config.schedule_pump));
-    if cef::initialize(Some(args.as_main_args()), Some(&settings), Some(&mut app), std::ptr::null_mut()) != 1 {
+    if cef::initialize(Some(args.as_main_args()), Some(&settings), Some(&mut app), sandbox.cast()) != 1 {
         return Err("CEF failed to initialize".into());
     }
     net::register_scheme();

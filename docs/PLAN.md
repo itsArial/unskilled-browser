@@ -170,7 +170,8 @@ show per-extension sandbox access and default extensions to "off in new sandboxe
   "continue where you left off" is written each start — that's what makes Chromium keep session
   cookies (logins) without restoring any tabs.
 - Encrypted checkpoint every 10 min; SIGTERM/SIGINT/SIGHUP (logout, shutdown) trigger the same
-  clean save. The previous archive is kept as a fallback; a RAM session left by a crash is
+  clean save (on Windows: WM_ENDSESSION, saved before the message returns, and console
+  Ctrl+C/close). The previous archive is kept as a fallback; a RAM session left by a crash is
   recovered after the next successful unlock.
 - (The disk is already LUKS-encrypted; that only helps while the machine is off.)
 
@@ -301,7 +302,11 @@ images crash the GPU process in windowless mode.
 - Omnibox loading: dots light along the pill's outline (top and bottom at once) behind red heads,
   spring-smoothed progress with a creep so it never stalls; the ring fades on completion.
 - Windows: DX12 + D3D11 shared-texture import, passphrase-only vault, session under
-  `%LOCALAPPDATA%` (no tmpfs), no Chromium sandbox yet (needs `bootstrap.exe`). CI-built only.
+  `%LOCALAPPDATA%` (no tmpfs). CI-built only. Chromium sandbox through CEF's prebuilt
+  `bootstrap.exe` (since M138 the only way outside a Chromium build): the bundle ships it as
+  `unskilled.exe`, icon and version info swapped by `crates/winmain/build.rs`, and it loads the
+  browser from `unskilled.dll` (`crates/winmain`, exporting `RunWinMain`), passing the sandbox
+  info on to `CefExecuteProcess`/`CefInitialize`. `cargo run` stays an unsandboxed plain exe.
 
 ## 11. Per-site sandboxes (shipped after 0.1)
 

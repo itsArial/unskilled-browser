@@ -110,6 +110,7 @@ scripts/package.sh        # portable bundle in dist/
 - Rust (MSVC toolchain), Visual Studio 2022 Build Tools (C++), `cmake` and `ninja`.
 - From a *Developer PowerShell*: `cargo build --release`.
 - To build the bundle, run `bash scripts/package.sh` from Git Bash.
+- `target\release\unskilled.exe` runs without the Chromium sandbox. The bundle runs sandboxed: its `unskilled.exe` is CEF's `bootstrap.exe` with our icon, loading the browser from `unskilled.dll`. To run that way from the source tree, `cargo build --release -p unskilled-winmain`, then `target\release\bootstrap.exe --module=unskilled_winmain`.
 
 ## Platform support
 
@@ -119,8 +120,8 @@ scripts/package.sh        # portable bundle in dist/
 | Vault encryption at rest | ✅ | ✅ |
 | TPM-sealed PIN | ✅ TPM 2.0 | ❌ passphrase only |
 | Open session kept in RAM only | ✅ `$XDG_RUNTIME_DIR` (tmpfs) | ❌ on disk under `%LOCALAPPDATA%` while running, erased on close |
-| Chromium sandbox | ✅ | ⚠️ not yet (needs CEF's `bootstrap.exe` launcher) |
-| Clean save on logout/shutdown | ✅ SIGTERM handled | ⚠️ window close only |
+| Chromium sandbox | ✅ | ✅ through CEF's `bootstrap.exe` launcher |
+| Clean save on logout/shutdown | ✅ SIGTERM handled | ✅ end of session (`WM_ENDSESSION`) handled |
 
 ## Roadmap
 
@@ -143,6 +144,7 @@ Planned work ([docs/PLAN.md](docs/PLAN.md) has the full design):
 | `crates/vault` | encrypted profile storage, TPM sealing, session lifecycle |
 | `crates/profile` | bookmarks, passwords, sign-in decisions, preferences |
 | `crates/netinfo` | offline IP → ASN lookups and CDN classification for the inspector |
+| `crates/winmain` | Windows: the browser as the DLL that CEF's sandboxing `bootstrap.exe` loads |
 
 ## Security
 

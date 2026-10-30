@@ -1,0 +1,20 @@
+[package]
+name = "unskilled-winmain"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Windows: the browser as `unskilled.dll`, run by CEF's bootstrap.exe shipped as `unskilled.exe`.
+# Empty on other platforms.
+[lib]
+crate-type = ["cdylib"]
+
+[target.'cfg(windows)'.dependencies]
+unskilled = { path = "../shell" }
+# Only for its build metadata: where the CEF distribution (with bootstrap.exe) was unpacked.
+cef-dll-sys = "=156.2.0"
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_LibraryLoader"] }
