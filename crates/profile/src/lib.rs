@@ -87,6 +87,8 @@ pub struct Prefs {
     pub confirm_password_use: bool,
     /// Every site gets its own sandbox (cookie jar, storage, cache, connections).
     pub isolate_sites: bool,
+    /// Windows installs: look for a new release on GitHub at every start. Off unless turned on.
+    pub check_updates: bool,
 }
 
 impl Default for Prefs {
@@ -98,6 +100,7 @@ impl Default for Prefs {
             offer_passwords: true,
             confirm_password_use: true,
             isolate_sites: true,
+            check_updates: false,
         }
     }
 }

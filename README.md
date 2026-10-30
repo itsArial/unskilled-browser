@@ -52,6 +52,11 @@ Pages reach the screen without a CPU copy, as DMA-BUFs on Linux and as D3D11 sha
   - Import from Google Password Manager, Chrome or Firefox (.csv).
 - **Bookmarks:** ctrl+d, a bookmarks page, tiles on the start page, and import from any browser's .html export.
 - **Settings** at `unskilled://settings`: search engine (DuckDuckGo, Mullvad Leta, Brave Search, Startpage), sign-in decisions, passwords, vault.
+- **Chrome extensions** at `unskilled://extensions`:
+  - add from a .crx or .zip file, or paste a Chrome Web Store link;
+  - enable, disable or remove;
+  - packages are unpacked by the browser's own CRX/ZIP code;
+  - every site's sandbox runs its own copy, so extension data is separated per site too.
 - **Mullvad status** in the bar, read from the local Mullvad app.
 
 **Developers**
@@ -83,7 +88,11 @@ scripts/install.sh
 
 ### Windows (x86_64, experimental)
 
-Download `unskilled-browser-<version>-windows-x86_64.zip`, unpack it, and run `unskilled.exe`. Windows 10 or 11 with a Direct3D 12 GPU is required.
+Windows 10 or 11 with a Direct3D 12 GPU is required.
+
+- **Installer (recommended):** run `unskilled-browser-<version>-windows-x86_64-setup.exe`. It installs for your user only (no admin) into `%LOCALAPPDATA%\Programs\unskilled-browser` and adds Start menu and desktop shortcuts. Uninstall from *Settings → Apps*; your vault in `%LOCALAPPDATA%\unskilled-browser` is kept.
+- **Updates:** an installed browser updates itself from `unskilled://settings` → about → *check for updates*. The new version is installed next to the running one and the bar offers *update · restart*. Nothing is fetched unless you click, or turn on *check automatically*.
+- **Portable:** unpack `unskilled-browser-<version>-windows-x86_64.zip` anywhere and run `unskilled.exe`. This copy doesn't update itself.
 
 ## Build from source
 
@@ -104,7 +113,7 @@ scripts/package.sh        # portable bundle in dist/
 **Windows**
 - Rust (MSVC toolchain), Visual Studio 2022 Build Tools (C++), `cmake` and `ninja`.
 - From a *Developer PowerShell*: `cargo build --release`.
-- To build the bundle, run `bash scripts/package.sh` from Git Bash.
+- To build the bundle, run `bash scripts/package.sh` from Git Bash. With [NSIS](https://nsis.sourceforge.io/) installed, it also builds the installer.
 - `target\release\unskilled.exe` runs without the Chromium sandbox. The bundle runs sandboxed: its `unskilled.exe` is CEF's `bootstrap.exe` with our icon, loading the browser from `unskilled.dll`. To run that way from the source tree, `cargo build --release -p unskilled-winmain`, then `target\release\bootstrap.exe --module=unskilled_winmain`.
 
 ## Platform support
@@ -124,7 +133,7 @@ Planned work ([docs/PLAN.md](docs/PLAN.md) has the full design):
 - Profiles.
 - Browser personas (fingerprint shaping).
 - In-browser Mullvad exits per sandbox, and a kill switch.
-- Chrome Web Store extensions.
+- Extension toolbar buttons and popups.
 - A Wireshark-style traffic panel with pcapng export.
 - A privacy-patched Chromium build.
 

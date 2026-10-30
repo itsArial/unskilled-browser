@@ -5,7 +5,9 @@
 # plus a .sha256 next to each. The bundle is the binary with the stripped CEF runtime beside it;
 # it runs from wherever it's unpacked. On Windows the binary is CEF's bootstrap.exe as unskilled.exe
 # (our icon and version info, crates/winmain/build.rs) loading the browser from unskilled.dll:
-# that is what runs Chromium's sub-processes sandboxed there.
+# that is what runs Chromium's sub-processes sandboxed there. Windows also gets
+#   dist/unskilled-browser-<version>-windows-x86_64-setup.exe   (scripts/installer.nsi, needs NSIS)
+# whose installs update themselves from the zip.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -49,6 +51,19 @@ cp "$cef"/locales/en-US*.pak "$out/locales/"
 cp LICENSE README.md THIRD_PARTY_NOTICES.md "$out/"
 cp "$cef/CREDITS.html" "$out/CHROMIUM_CREDITS.html"
 
+setup=""
+if [[ $os == windows ]]; then
+    if command -v makensis > /dev/null; then
+        setup="$name-setup.exe"
+        makensis -V2 -DVERSION="$version" -DBUNDLE="$(cygpath -w "$PWD/$out")" \
+            -DOUTFILE="$(cygpath -w "$PWD/dist/$setup")" scripts/installer.nsi
+    elif [[ -n ${CI:-} ]]; then
+        echo "makensis not found: the release needs the installer" >&2; exit 1
+    else
+        echo "makensis not found (install NSIS): skipping the installer" >&2
+    fi
+fi
+
 cd dist
 if [[ $os == linux ]]; then
     archive="$name.tar.gz"
@@ -57,5 +72,7 @@ else
     archive="$name.zip"
     7z a -tzip -mx=9 "$archive" "$name" > /dev/null
 fi
-sha256sum "$archive" > "$archive.sha256"
-echo "dist/$archive ($(du -h "$archive" | cut -f1))"
+for file in "$archive" $setup; do
+    sha256sum "$file" > "$file.sha256"
+    echo "dist/$file ($(du -h "$file" | cut -f1))"
+done

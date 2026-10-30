@@ -15,7 +15,7 @@ use std::{
     thread,
     time::Duration,
 };
-use tungstenite::{Message, handshake::server::{ErrorResponse, Request, Response}};
+use crate::websocket::{self, Message};
 
 pub type Wake = Arc<dyn Fn() + Send + Sync>;
 
@@ -95,21 +95,14 @@ fn serve(
             Err(_) => return,
         };
         let _ = stream.set_nonblocking(false);
-        let expected = path.clone();
-        #[allow(clippy::result_large_err)] // the signature is tungstenite's
-        let check = move |request: &Request, response: Response| -> Result<Response, ErrorResponse> {
-            if request.uri().path() == expected {
-                Ok(response)
-            } else {
-                Err(tungstenite::http::Response::builder().status(403).body(None).unwrap())
-            }
-        };
-        let Ok(mut socket) = tungstenite::accept_hdr(stream, check) else {
+        // A client that connects and sends nothing mustn't stall the bridge.
+        let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+        let Ok(mut socket) = websocket::accept(stream, &path) else {
             log::warn!("devtools: refused a connection on the wrong path");
             continue;
         };
         log::debug!("devtools: frontend connected");
-        let _ = socket.get_mut().set_read_timeout(Some(Duration::from_millis(8)));
+        let _ = socket.stream().set_read_timeout(Some(Duration::from_millis(8)));
         // Drop what queued up while nobody was connected.
         while outbound.try_recv().is_ok() {}
         loop {
@@ -117,24 +110,21 @@ fn serve(
                 return;
             }
             match socket.read() {
-                Ok(Message::Text(text)) => {
-                    let _ = inbound.send(text.as_str().to_owned());
+                Ok(Some(Message::Text(text))) => {
+                    let _ = inbound.send(text);
                     wake();
                 }
-                Ok(Message::Close(_)) => break,
-                Ok(_) => {}
-                Err(tungstenite::Error::Io(e)) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {}
-                Err(_) => break,
+                Ok(Some(Message::Close)) | Err(_) => break,
+                Ok(None) => {}
             }
-            let mut wrote = false;
+            let mut failed = false;
             while let Ok(message) = outbound.try_recv() {
-                let text = String::from_utf8_lossy(&message).into_owned();
-                if socket.write(Message::Text(text.into())).is_err() {
+                if socket.send_text(&String::from_utf8_lossy(&message)).is_err() {
+                    failed = true;
                     break;
                 }
-                wrote = true;
             }
-            if wrote && socket.flush().is_err() {
+            if failed {
                 break;
             }
         }

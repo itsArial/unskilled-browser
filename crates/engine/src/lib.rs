@@ -1,15 +1,18 @@
 //! Chromium (CEF 156) embedded windowless: pages render into GPU textures the shell composites.
 
 mod devtools;
+mod download;
 mod inspect;
 mod net;
 mod renderer;
 mod sandbox;
 mod tab;
 mod webui;
+mod websocket;
 
 pub use net::{Action, BlockEvent, SharedNet, TabNet};
 pub use devtools::Wake;
+pub use download::fetch;
 pub use webui::{Host, IdentityLookup, set_host, set_identity_gate};
 pub use sandbox::{forget as forget_sandbox, key_for as sandbox_for, list as sandboxes, set_enabled as set_sandboxes_enabled};
 pub use inspect::{Inspect, Request, Tls};
@@ -35,7 +38,12 @@ pub struct Config {
     pub schedule_pump: SchedulePump,
     /// Redraws the UI from any thread (identity prompts arrive on CEF's IO thread).
     pub wake: Wake,
+    /// Unpacked extension folders to load (`--load-extension`), into every sandbox.
+    pub extensions: Vec<PathBuf>,
 }
+
+/// The `--load-extension` value, set before Chromium reads its command line.
+static EXTENSIONS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
 /// The Chromium this build embeds (CEF 156).
 pub const CHROMIUM_VERSION: &str = "156.0.8078.48";
@@ -84,6 +92,8 @@ pub fn initialize(config: Config) -> Result<(), String> {
         background_color: 0xFFFF_FFFF,
         ..Default::default()
     };
+    let paths: Vec<String> = config.extensions.iter().map(|p| p.to_string_lossy().into_owned()).filter(|p| !p.contains(',')).collect();
+    let _ = EXTENSIONS.set(paths.join(","));
     let mut app = BrowserApp::new(Some(config.schedule_pump));
     if cef::initialize(Some(args.as_main_args()), Some(&settings), Some(&mut app), sandbox.cast()) != 1 {
         return Err("CEF failed to initialize".into());
@@ -187,6 +197,9 @@ wrap_app! {
                         None => switch(flag.trim_start_matches('-')),
                     }
                 }
+            }
+            if let Some(paths) = EXTENSIONS.get().filter(|p| !p.is_empty()) {
+                value("load-extension", paths);
             }
             switch("hide-crash-restore-bubble");
             switch("noerrdialogs");

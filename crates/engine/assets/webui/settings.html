@@ -11,7 +11,7 @@
   <p class="lede">everything here is stored on this machine, inside your encrypted vault.</p>
   <nav>
     <a href="#signin" class="active">sign-in</a><a href="#sites">sites</a><a href="#passwords">passwords</a><a href="#bookmarks">bookmarks</a>
-    <a href="#search">search</a><a href="#vault">vault</a><a href="#about">about</a>
+    <a href="#search">search</a><a href="#vault">vault</a><a href="unskilled://extensions">extensions</a><a href="#about">about</a>
   </nav>
 
   <section id="signin">
@@ -75,6 +75,13 @@
   <section id="about">
     <h2>about</h2>
     <p id="about-text"></p>
+    <div id="updates" hidden>
+      <p>updates come from the project's GitHub releases. nothing is fetched unless you check, or turn on the automatic check.</p>
+      <div class="row"><div class="label">updates<small id="update-status">not checked</small></div>
+        <div class="actions"><button id="check-updates">check for updates</button><button id="update-restart" hidden>restart now</button></div></div>
+      <div class="row"><div class="label">check automatically<small>every time the browser starts</small></div>
+        <label class="switch"><input type="checkbox" data-pref="check_updates"><span></span></label></div>
+    </div>
   </section>
 </main>
 <script src="/assets/app.js"></script>

@@ -1,9 +1,11 @@
 name: release
 
-# Push a tag like v0.1.0 to build both bundles and publish them as a GitHub release.
+# Push a tag like v0.1.0 to build both bundles and publish them as a GitHub release. Or run it
+# by hand on main: it tags that commit with the version in Cargo.toml.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -48,6 +50,7 @@ jobs:
           path: |
             dist/*.tar.gz
             dist/*.zip
+            dist/*-setup.exe
             dist/*.sha256
 
   publish:
@@ -61,16 +64,25 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: tag
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            tag="$GITHUB_REF_NAME"
+          else
+            tag="v$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          fi
+          echo "TAG=$tag" >> "$GITHUB_ENV"
       - name: release notes from the changelog
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="${TAG#v}"
           awk -v v="$version" '/^## /{p = index($0, "[" v "]") > 0; next} p' CHANGELOG.md > notes.md
-          [ -s notes.md ] || echo "unskilled browser $GITHUB_REF_NAME" > notes.md
+          [ -s notes.md ] || echo "unskilled browser $TAG" > notes.md
       - name: publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           prerelease=""
-          case "$GITHUB_REF_NAME" in v0.*|*-*) prerelease="--prerelease" ;; esac
-          gh release create "$GITHUB_REF_NAME" dist/* --title "unskilled browser $GITHUB_REF_NAME" \
+          case "$TAG" in v0.*|*-*) prerelease="--prerelease" ;; esac
+          # Creates the tag on this commit when the run wasn't started by one.
+          gh release create "$TAG" dist/* --target "$GITHUB_SHA" --title "unskilled browser $TAG" \
             --notes-file notes.md $prerelease

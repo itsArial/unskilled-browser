@@ -16,6 +16,7 @@ mod shell;
 mod signals;
 mod theme;
 mod update;
+mod updater;
 mod vpn;
 
 use lock::{LockScreen, Submit};
@@ -66,6 +67,8 @@ enum UserEvent {
     Quit,
     /// A newer build was installed over this one.
     UpdateReady,
+    /// The shell asked to restart (update pill, extension changes).
+    Restart,
 }
 
 struct Gpu {
@@ -220,6 +223,9 @@ impl App {
         self.scene.clear(scale);
         if let Some(shell) = &mut self.shell {
             self.animating = shell.frame(dt, size.width, size.height, scale, &mut self.scene);
+            if shell.take_restart_request() {
+                let _ = self.proxy.send_event(UserEvent::Restart);
+            }
             window.set_cursor(edge.map_or_else(|| shell.cursor_icon(), edge_cursor));
         } else if let Some(lock) = &mut self.lock {
             self.animating = lock.frame(dt, size.width, size.height, &mut self.scene);
@@ -428,9 +434,20 @@ impl App {
         };
         shield.use_settings(session.settings_dir().join("shield.json"));
 
+        #[allow(unused_mut)]
+        let mut extensions = extensions::Manager::open(session.settings_dir().join("extensions"));
+        // Dev builds only: `UNSKILLED_DEV_INSTALL=/path/to.crx` installs a package at startup.
+        #[cfg(debug_assertions)]
+        if let Ok(path) = std::env::var("UNSKILLED_DEV_INSTALL") {
+            match std::fs::read(&path).map_err(|e| e.to_string()).and_then(|b| extensions.install(&b)) {
+                Ok(e) => log::info!("dev: installed {} ({})", e.name, e.id),
+                Err(e) => log::warn!("dev: installing {path} failed: {e}"),
+            }
+        }
         let proxy = self.proxy.clone();
         let init_started = Instant::now();
         let started = engine::initialize(engine::Config {
+            extensions: extensions.load_paths(),
             profile_dir: session.profile_dir(),
             shield: shield.clone(),
             schedule_pump: Arc::new(move |delay| {
@@ -469,8 +486,15 @@ impl App {
             let _ = proxy.send_event(UserEvent::Redraw);
         });
         let Some(vault) = self.vault.clone() else { return };
-        let host = host::Host::new(profile, vault, notify.clone());
+        let host = host::Host::new(profile, vault, notify.clone(), extensions);
         engine::set_host(host.clone());
+        host.check_updates_at_start();
+        // Dev builds only: `UNSKILLED_DEV_STORE=<id>` runs a Web Store install like the page does.
+        #[cfg(debug_assertions)]
+        if let Ok(id) = std::env::var("UNSKILLED_DEV_STORE") {
+            use engine::Host as _;
+            log::info!("dev: store install {}", host.webui("installFromStore", &serde_json::json!({ "url": id }).to_string()));
+        }
         let mut shell = Shell::new(vpn, shield, engine_gpu, notify, data_dir().join("netinfo"), wake, host);
         // Dev hook: `UNSKILLED_OPEN="url1 url2"` opens pages at startup.
         if let Ok(urls) = std::env::var("UNSKILLED_OPEN") {
@@ -544,7 +568,7 @@ impl ApplicationHandler<UserEvent> for App {
         self.shield = Some(shield);
         self.engine_gpu = Some(engine_gpu);
 
-        let vault = match vault::Vault::open(data.join("vault")) {
+        let vault = match open_vault(data.join("vault")) {
             Ok(vault) => Arc::new(vault),
             Err(e) => {
                 log::error!("{e}");
@@ -554,6 +578,7 @@ impl ApplicationHandler<UserEvent> for App {
         };
         self.lock = Some(LockScreen::new(vault.state(), vault.tpm_denied()));
         self.vault = Some(vault);
+        updater::clean_up();
 
         // Dev builds only: `UNSKILLED_DEV_PIN` types the PIN, for automated runs.
         #[cfg(debug_assertions)]
@@ -584,6 +609,7 @@ impl ApplicationHandler<UserEvent> for App {
         match event {
             UserEvent::Redraw => self.request_redraw(),
             UserEvent::Unlocked => self.unlocked(_event_loop),
+            UserEvent::Restart => self.restart(_event_loop),
             UserEvent::UpdateReady => {
                 self.update_ready = true;
                 if let Some(shell) = &mut self.shell {
@@ -710,6 +736,18 @@ impl ApplicationHandler<UserEvent> for App {
 
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
         self.shutdown();
+    }
+}
+
+/// Opens the vault, waiting a little for an instance that is still exiting: a restart into an
+/// update starts the new process before the old one has let go of the vault (Windows).
+fn open_vault(dir: PathBuf) -> Result<vault::Vault, vault::Error> {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        match vault::Vault::open(dir.clone()) {
+            Err(vault::Error::AlreadyRunning) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(100)),
+            result => return result,
+        }
     }
 }
 

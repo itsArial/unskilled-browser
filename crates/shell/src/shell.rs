@@ -49,6 +49,7 @@ const SMALL_TEXT: f32 = 11.0;
 const LOGO: f32 = 22.0;
 const SETTINGS_URL: &str = "unskilled://settings";
 const BOOKMARKS_URL: &str = "unskilled://bookmarks";
+const EXTENSIONS_URL: &str = "unskilled://extensions";
 /// Most bookmarks the start page shows.
 const TILES: usize = 8;
 const TILE_W: f32 = 176.0;
@@ -87,6 +88,7 @@ enum AppAction {
     NewTab,
     Bookmark,
     Bookmarks,
+    Extensions,
     Settings,
     DevTools,
     Inspector,
@@ -230,6 +232,8 @@ pub struct Shell {
     star_hover: Spring,
     /// The star pops when a page is bookmarked.
     star_pop: Spring,
+    /// DevTools asked for before the page's browser existed (sandboxed pages start async).
+    devtools_pending: bool,
     netinfo: Option<Arc<NetInfo>>,
     netinfo_dir: PathBuf,
     /// Redraw from background threads.
@@ -295,6 +299,7 @@ impl Shell {
             load_finishing: false,
             star_hover: Spring::new(0.0, SpringConfig::SNAP),
             star_pop: Spring::new(1.0, SpringConfig::SETTLE),
+            devtools_pending: false,
             netinfo: None,
             netinfo_dir,
             wake,
@@ -842,6 +847,11 @@ impl Shell {
         let active = self.active;
         let Some(tab) = self.tabs.iter_mut().find(|t| t.id == active) else { return };
         let Some(page) = &tab.page else { return };
+        if page.browser_id().is_none() {
+            // Opens as soon as the page exists (see `frame`).
+            self.devtools_pending = true;
+            return;
+        }
         match &tab.devtools {
             Some(devtools) if !keep_open => {
                 devtools.close();
@@ -923,6 +933,7 @@ impl Shell {
             (AppAction::NewTab, Row::item("new tab", "ctrl+t")),
             (AppAction::Bookmark, Row::item(if bookmarked { "remove bookmark" } else { "bookmark this page" }, "ctrl+d")),
             (AppAction::Bookmarks, Row::item("bookmarks", "ctrl+shift+o")),
+            (AppAction::Extensions, Row::item("extensions", "")),
             (AppAction::Settings, Row::item("settings", "ctrl+,")),
             (AppAction::None, Row::separator()),
             (AppAction::DevTools, Row::item("developer tools", "f12")),
@@ -941,6 +952,7 @@ impl Shell {
             AppAction::NewTab => self.new_tab(None),
             AppAction::Bookmark => self.toggle_bookmark(),
             AppAction::Bookmarks => self.open_internal(BOOKMARKS_URL),
+            AppAction::Extensions => self.open_internal(EXTENSIONS_URL),
             AppAction::Settings => self.open_internal(SETTINGS_URL),
             AppAction::DevTools => self.toggle_devtools(false),
             AppAction::Inspector => self.toggle_inspector(),
@@ -1257,6 +1269,7 @@ impl Shell {
                     self.prompts.retain(|p| !matches!(p, Prompt::SavePassword { browser: b, .. } if *b == browser));
                     self.prompts.push(Prompt::SavePassword { key, browser, url, username, password });
                 }
+                Event::Restart => self.restart_requested = true,
                 Event::LoginForm { browser, url, frame } => {
                     let page_origin = self.page_by_browser(browser).and_then(|p| profile::origin_of(&p.state.borrow().url));
                     self.forms.insert(browser, Form { url, frame, page_origin });
@@ -1679,6 +1692,10 @@ impl Shell {
             .collect();
         for popup in popups {
             self.adopt(popup);
+        }
+        if self.devtools_pending && self.page().is_some_and(|p| p.browser_id().is_some()) {
+            self.devtools_pending = false;
+            self.toggle_devtools(true);
         }
         // Pages heading to another site move to that site's sandbox.
         let swaps: Vec<(u64, String)> = self
@@ -2175,7 +2192,7 @@ impl Shell {
             None => "new tab".into(),
             Some(p) => {
                 let s = p.state.borrow();
-                if !s.title.is_empty() && !s.title.starts_with("http") {
+                if !s.title.is_empty() && !s.title.starts_with("http") && s.title != "about:blank" {
                     s.title.clone()
                 } else {
                     shield::site_of(&s.url).unwrap_or_else(|| "loading".into())

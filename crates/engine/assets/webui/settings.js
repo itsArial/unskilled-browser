@@ -16,6 +16,7 @@ async function withAuth(reply) {
 async function load() {
   state = await api("state");
   render();
+  if (state.updates) followUpdate(state.update);
 }
 
 function render() {
@@ -48,8 +49,35 @@ function render() {
       : "protected by your passphrase (argon2id, 256 MB). " + (state.tpmAvailable ? "this machine's TPM is available: the next time you unlock, you'll be offered a PIN instead." : ""),
     el("p", { class: "notice" }, "only logins and site storage survive a restart — history, cache and every other trace is wiped each time you close the browser."));
 
+  $("#updates").hidden = !state.updates;
+  renderUpdate(state.update);
+
   $("#about-text").replaceChildren("unskilled browser " + state.version + " · chromium " + state.chromium + " · GPL-3.0 · ",
     el("a", { href: "#", onclick: (e) => { e.preventDefault(); api("openUrl", { url: state.source }); } }, "source code"));
+}
+
+function renderUpdate(u) {
+  const text = {
+    idle: "not checked",
+    checking: "checking…",
+    current: "you have the latest version",
+    downloading: "downloading " + u.version + "…",
+    installing: "installing " + u.version + "…",
+    ready: u.version + " is installed — restart to use it",
+    failed: "couldn't update: " + u.error,
+  }[u.state];
+  $("#update-status").textContent = text;
+  $("#check-updates").disabled = ["checking", "downloading", "installing"].includes(u.state);
+  $("#update-restart").hidden = u.state !== "ready";
+  return u;
+}
+
+// The download and install run in the browser; the page follows along.
+async function followUpdate(u) {
+  while (["checking", "downloading", "installing"].includes(renderUpdate(u).state)) {
+    await new Promise((r) => setTimeout(r, 500));
+    u = await api("updateStatus");
+  }
 }
 
 function renderSandboxes() {
@@ -111,6 +139,8 @@ $("#search-engine").addEventListener("change", async (e) => {
   await api("setPrefs", { prefs: state.prefs });
   toast("search engine changed");
 });
+$("#check-updates").addEventListener("click", async () => followUpdate(await api("checkUpdates")));
+$("#update-restart").addEventListener("click", () => api("restart"));
 $("#password-filter").addEventListener("input", renderPasswords);
 $("#sandbox-filter").addEventListener("input", renderSandboxes);
 $("#import-passwords").addEventListener("click", async () => {

@@ -5,6 +5,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-30
+
+### Added
+- Extensions page (`unskilled://extensions`): add Chrome extensions from .crx/.zip files or a Chrome Web Store link; enable, disable and remove them (applies on restart).
+  - Packages are unpacked by our own CRX3/ZIP/DEFLATE code.
+  - Web Store packages keep their store ID.
+- Windows installer (`…-windows-x86_64-setup.exe`): a per-user install, no admin needed, with Start menu and desktop shortcuts and an entry under *Settings → Apps*.
+- Installed Windows copies update themselves: *check for updates* in settings, or an opt-in check at every start. The new version is installed next to the running one (checked against the release's SHA-256), and the bar offers *update · restart*.
+
+### Fixed
+- Windows: restarting (after an update, or for extension changes) could fail with "already running", because the new process started before the old one let go of the vault.
+
 ## [0.1.0] - 2026-10-30
 
 First public release.

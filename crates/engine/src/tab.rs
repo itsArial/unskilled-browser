@@ -745,7 +745,11 @@ wrap_display_handler! {
                 let url = url.map(|u| u.to_string()).unwrap_or_default();
                 // Pages served straight from a service worker cache never hit the network layer.
                 self.h.net.lock().unwrap().top_url = url.clone();
-                self.h.state.borrow_mut().url = url;
+                let mut state = self.h.state.borrow_mut();
+                if !(url == "about:blank" && state.pending_url.is_some()) {
+                    state.url = url;
+                }
+                drop(state);
                 (self.h.notify)();
             }
         }
@@ -798,7 +802,7 @@ wrap_load_handler! {
     impl LoadHandler {
         fn on_loading_state_change(
             &self,
-            _browser: Option<&mut Browser>,
+            browser: Option<&mut Browser>,
             is_loading: ::std::os::raw::c_int,
             can_go_back: ::std::os::raw::c_int,
             can_go_forward: ::std::os::raw::c_int,
@@ -807,7 +811,13 @@ wrap_load_handler! {
             state.loading = is_loading != 0;
             state.can_go_back = can_go_back != 0;
             state.can_go_forward = can_go_forward != 0;
+            // An async-created page starts on about:blank; go to the real URL once that settled
+            // (navigating earlier can lose the race against the blank page's own load).
+            let pending = if is_loading == 0 { state.pending_url.take() } else { None };
             drop(state);
+            if let (Some(url), Some(frame)) = (pending, browser.and_then(|b| b.main_frame())) {
+                frame.load_url(Some(&CefString::from(url.as_str())));
+            }
             (self.h.notify)();
         }
     }
@@ -870,10 +880,6 @@ wrap_life_span_handler! {
                 *self.h.watcher.borrow_mut() = inspect::watch(browser, self.h.inspect.clone(), self.h.notify.clone());
                 *slot = Some(browser.clone());
                 drop(slot);
-                let pending = self.h.state.borrow_mut().pending_url.take();
-                if let (Some(url), Some(frame)) = (pending, browser.main_frame()) {
-                    frame.load_url(Some(&CefString::from(url.as_str())));
-                }
                 (self.h.notify)();
             }
         }
