@@ -30,6 +30,18 @@ jobs:
         shell: bash
         run: cargo build --locked -p unskilled-winmain
 
+      - name: assemble the bundle layout
+        shell: bash
+        run: |
+          cef=$(ls -dt target/debug/build/cef-dll-sys-*/out/cef_windows_x86_64 | head -1)
+          mkdir -p run/locales
+          cp "$cef"/*.dll "$cef"/*.dat "$cef"/*.bin "$cef"/*.pak "$cef/vk_swiftshader_icd.json" run/
+          cp "$cef"/locales/en-US*.pak run/locales/
+          cp "$(ls -dt target/debug/build/unskilled-winmain-*/out/unskilled.exe | head -1)" run/unskilled.exe
+          cp target/debug/unskilled_winmain.dll run/unskilled.dll
+          cp target/debug/unskilled_winmain.pdb run/unskilled_winmain.pdb
+          ls run
+
       - name: start-up
         shell: pwsh
         run: |
@@ -38,27 +50,25 @@ jobs:
           $env:UNSKILLED_DEV_PIN = "throwaway passphrase"
           $env:UNSKILLED_OPEN = "https://example.com/"
           $env:RUST_LOG = "info,unskilled_engine=debug,wgpu_core=warn,wgpu_hal=warn"
-          $dir = (Resolve-Path target\debug).Path
+          $dir = (Resolve-Path run).Path
           $log = "$env:RUNNER_TEMP\startup.txt"
-          $p = Start-Process "$dir\bootstrap.exe" -ArgumentList "--module=unskilled_winmain" -WorkingDirectory $dir -PassThru -RedirectStandardError $log
+          $p = Start-Process "$dir\unskilled.exe" -WorkingDirectory $dir -PassThru -RedirectStandardError $log
           $exited = $p.WaitForExit(60000)
-          Get-CimInstance Win32_Process -Filter "Name='bootstrap.exe'" | ForEach-Object { "pid $($_.ProcessId): " + (($_.CommandLine -split ' ') | Where-Object { $_ -like '--type=*' }) }
-          Get-Process bootstrap -ErrorAction SilentlyContinue | Stop-Process -Force
+          Get-CimInstance Win32_Process -Filter "Name='unskilled.exe'" | ForEach-Object { "pid $($_.ProcessId): " + (($_.CommandLine -split ' ') | Where-Object { $_ -like '--type=*' }) }
+          Get-Process unskilled -ErrorAction SilentlyContinue | Stop-Process -Force
           "--- log"; Get-Content $log
-          if ($exited) { "EXITED with code 0x{0:X}" -f $p.ExitCode }
+          if ($exited) { "EXITED with code 0x{0:X}" -f $p.ExitCode; exit 1 }
 
       - name: under cdb, if it crashes
-        if: failure() || success()
+        if: failure()
         shell: pwsh
         run: |
           $cdb = "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe"
           $env:LOCALAPPDATA = "$env:RUNNER_TEMP\appdata2"
           New-Item -ItemType Directory -Force $env:LOCALAPPDATA | Out-Null
           $env:UNSKILLED_DEV_PIN = "throwaway passphrase"
-          $dir = (Resolve-Path target\debug).Path
+          $dir = (Resolve-Path run).Path
           $env:_NT_SYMBOL_PATH = "$dir;srv*$env:RUNNER_TEMP\sym*https://msdl.microsoft.com/download/symbols"
           Push-Location $dir
-          $job = Start-Job { & $using:cdb -lines -c "g; .lastevent; kn 40; q" "$using:dir\bootstrap.exe" --module=unskilled_winmain 2>&1 }
-          if (-not (Wait-Job $job -Timeout 60)) { "no crash within 60 s"; Get-Process bootstrap, cdb -ErrorAction SilentlyContinue | Stop-Process -Force }
-          Receive-Job $job | Select-String -Pattern "Access violation|exception|^\s*[0-9a-f]{2} |ExceptionAddress" | Select-Object -First 60
+          & $cdb -lines -c "g; .lastevent; kn 40; q" "$dir\unskilled.exe" 2>&1 | Select-String -Pattern "violation|exception|Break|^ *[0-9a-f]{2} |ExceptionAddress" | Select-Object -First 70
           Pop-Location
